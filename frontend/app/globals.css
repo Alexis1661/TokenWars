@@ -1,0 +1,192 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Fuentes retro ── */
+@import url('https://fonts.googleapis.com/css2?family=Boogaloo&family=Lilita+One&display=swap');
+
+/* ── Variables de tema Cuphead ── */
+:root {
+  --cup-bg:        #1a0800;
+  --cup-bg2:       #2d1200;
+  --cup-cream:     #f5e6c4;
+  --cup-parchment: #e8d5a3;
+  --cup-red:       #c41010;
+  --cup-red-dark:  #8b0000;
+  --cup-gold:      #d4a017;
+  --cup-gold-dark: #9a7010;
+  --cup-black:     #0d0400;
+  --cup-outline:   3px solid #0d0400;
+}
+
+/* ── Base ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: var(--cup-bg); }
+
+body {
+  background: var(--cup-bg);
+  color: var(--cup-cream);
+  font-family: 'Boogaloo', cursive;
+  font-size: 18px;
+  /* Grain de película */
+  position: relative;
+}
+
+/* Grain overlay global */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 128px;
+}
+
+/* ── Tipografía ── */
+h1, h2, h3, .cup-title {
+  font-family: 'Lilita One', cursive;
+  letter-spacing: 0.02em;
+}
+
+/* ── Utilidades Cuphead ── */
+
+/* Panel pergamino con borde art-deco */
+.cup-panel {
+  background: var(--cup-cream);
+  color: var(--cup-black);
+  border: 4px solid var(--cup-black);
+  box-shadow:
+    inset 0 0 0 3px var(--cup-gold),
+    6px 6px 0 var(--cup-black);
+  border-radius: 4px;
+}
+
+.cup-panel-dark {
+  background: var(--cup-bg2);
+  color: var(--cup-cream);
+  border: 4px solid var(--cup-gold);
+  box-shadow:
+    inset 0 0 0 2px var(--cup-gold-dark),
+    6px 6px 0 var(--cup-black);
+  border-radius: 4px;
+}
+
+/* Botón rojo estilo Cuphead */
+.cup-btn {
+  font-family: 'Lilita One', cursive;
+  background: var(--cup-red);
+  color: var(--cup-cream);
+  border: 4px solid var(--cup-black);
+  box-shadow: 5px 5px 0 var(--cup-black);
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  transition: transform 0.08s, box-shadow 0.08s;
+  cursor: pointer;
+}
+.cup-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0 var(--cup-black);
+}
+.cup-btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 2px 2px 0 var(--cup-black);
+}
+.cup-btn:disabled {
+  background: #555;
+  color: #999;
+  box-shadow: 3px 3px 0 var(--cup-black);
+  transform: none;
+  cursor: not-allowed;
+}
+
+/* Botón dorado */
+.cup-btn-gold {
+  background: var(--cup-gold);
+  color: var(--cup-black);
+}
+.cup-btn-gold:hover { box-shadow: 7px 7px 0 var(--cup-black); }
+
+/* Botón oscuro */
+.cup-btn-dark {
+  background: var(--cup-bg2);
+  color: var(--cup-cream);
+  border-color: var(--cup-gold);
+  box-shadow: 5px 5px 0 var(--cup-gold-dark);
+}
+
+/* Input estilo Cuphead */
+.cup-input {
+  background: var(--cup-parchment);
+  color: var(--cup-black);
+  border: 4px solid var(--cup-black);
+  box-shadow: inset 0 0 0 2px var(--cup-gold-dark);
+  border-radius: 4px;
+  font-family: 'Boogaloo', cursive;
+  font-size: 1.1rem;
+  outline: none;
+  width: 100%;
+  padding: 0.75rem 1rem;
+}
+.cup-input:focus {
+  box-shadow: inset 0 0 0 2px var(--cup-gold), 0 0 0 3px var(--cup-gold);
+}
+.cup-input::placeholder { color: #8b7340; }
+
+/* Texto con outline cartoon */
+.cup-text-outline {
+  -webkit-text-stroke: 2px var(--cup-black);
+  text-shadow: 3px 3px 0 var(--cup-black);
+}
+
+/* Divisor decorativo */
+.cup-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--cup-gold);
+  font-family: 'Lilita One', cursive;
+  font-size: 1.2rem;
+}
+.cup-divider::before,
+.cup-divider::after {
+  content: '';
+  flex: 1;
+  height: 3px;
+  background: linear-gradient(to right, transparent, var(--cup-gold));
+}
+.cup-divider::after {
+  background: linear-gradient(to left, transparent, var(--cup-gold));
+}
+
+/* Badge/chip */
+.cup-badge {
+  font-family: 'Lilita One', cursive;
+  background: var(--cup-red);
+  color: var(--cup-cream);
+  border: 3px solid var(--cup-black);
+  box-shadow: 3px 3px 0 var(--cup-black);
+  border-radius: 4px;
+  padding: 0.15rem 0.75rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  display: inline-block;
+}
+
+/* Fondo con patrón de estrellas decorativas */
+.cup-stars-bg {
+  background-image:
+    radial-gradient(circle, rgba(212,160,23,0.15) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--cup-bg); }
+::-webkit-scrollbar-thumb {
+  background: var(--cup-gold-dark);
+  border: 2px solid var(--cup-black);
+}
