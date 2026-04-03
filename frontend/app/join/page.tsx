@@ -74,9 +74,70 @@ export default function JoinPage() {
     } catch { setError('Error de red. Intenta de nuevo.'); setLoading(false) }
   }
 
+  // Mientras verifica localStorage
+  if (reconnecting) {
+    return (
+      <main className="min-h-screen flex items-center justify-center" style={{ background: 'var(--cup-bg)' }}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 rounded-full animate-spin"
+            style={{ borderColor: 'var(--cup-gold)', borderTopColor: 'transparent' }} />
+          <p style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold-dark)' }}>Verificando sesión...</p>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen cup-stars-bg flex flex-col items-center justify-center p-6 relative overflow-hidden"
       style={{ background: 'var(--cup-bg)' }}>
+
+      {/* Modal de reconexión */}
+      <AnimatePresence>
+        {reconnectInfo && (
+          <motion.div
+            key="reconnect-overlay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: 'rgba(0,0,0,0.75)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.8, y: 20 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+              className="cup-panel p-6 w-full max-w-sm flex flex-col gap-5"
+            >
+              <div className="text-center">
+                <div className="text-4xl mb-2"></div>
+                <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '1.8rem', lineHeight: 1 }}>
+                  ¡Partida activa!
+                </h2>
+                <p className="mt-2 text-sm" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Exo 2', sans-serif" }}>
+                  Encontramos tu sesión anterior
+                </p>
+              </div>
+
+              <div className="rounded" style={{ background: 'rgba(0,0,0,0.1)', border: '2px solid var(--cup-gold-dark)', padding: '12px 16px' }}>
+                <p className="text-xs" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Orbitron', sans-serif" }}>EQUIPO</p>
+                <p style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-red)', fontSize: '1.5rem' }}>
+                  {reconnectInfo.teamName}
+                </p>
+                <p className="text-xs mt-1" style={{ color: 'var(--cup-gold-dark)', letterSpacing: '0.15em' }}>
+                  Sesión: <span style={{ color: 'var(--cup-cream)' }}>{reconnectInfo.hostCode}</span>
+                </p>
+              </div>
+
+              <button onClick={handleReconnect} className="cup-btn cup-btn-gold text-xl py-3">
+                ¡Reincorporarme!
+              </button>
+
+              <button onClick={handleDismissReconnect}
+                className="text-sm text-center py-2"
+                style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Exo 2', sans-serif" }}>
+                No, unirme a otra sesión
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: 'radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.6) 100%)' }} />
@@ -85,8 +146,8 @@ export default function JoinPage() {
 
         {/* Header */}
         <div className="text-center">
-          <div className="text-5xl mb-1">🎮</div>
-          <h1 style={{ fontFamily: "'Lilita One', cursive", color: 'var(--cup-gold)', fontSize: '2.5rem', lineHeight: 1 }}
+          <div className="text-5xl mb-1"></div>
+          <h1 style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '2.5rem', lineHeight: 1 }}
             className="cup-text-outline">TOKEN WARS</h1>
         </div>
 
@@ -106,7 +167,7 @@ export default function JoinPage() {
                 initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
                 className="flex flex-col gap-4"
               >
-                <p className="text-center text-sm" style={{ color: 'var(--cup-bg2)', fontFamily: "'Boogaloo', cursive" }}>
+                <p className="text-center text-sm" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Exo 2', sans-serif" }}>
                   El profe lo proyecta en la pantalla
                 </p>
 
@@ -116,14 +177,14 @@ export default function JoinPage() {
                   onKeyDown={(e) => e.key === 'Enter' && handleCodeSubmit()}
                   maxLength={6} placeholder="XXXXXX"
                   className="cup-input text-center tracking-[0.4em] font-black"
-                  style={{ fontSize: '2.5rem', letterSpacing: '0.4em', color: 'var(--cup-red)', fontFamily: "'Lilita One', cursive" }}
+                  style={{ fontSize: '2.5rem', letterSpacing: '0.4em', color: 'var(--cup-red)', fontFamily: "'Orbitron', sans-serif" }}
                 />
 
                 {/* Indicadores */}
                 <div className="flex gap-2 justify-center">
                   {Array.from({ length: 6 }).map((_, i) => (
                     <div key={i} className="h-2 flex-1 rounded-sm transition-all"
-                      style={{ background: i < hostCode.length ? 'var(--cup-red)' : 'rgba(0,0,0,0.15)', border: '2px solid var(--cup-black)' }} />
+                      style={{ background: i < hostCode.length ? 'var(--cup-red)' : 'rgba(0,0,0,0.15)', border: '1px solid rgba(168,85,247,0.2)' }} />
                   ))}
                 </div>
 
@@ -145,18 +206,18 @@ export default function JoinPage() {
                 <button onClick={() => { setStep('code'); setError('') }}
                   className="flex items-center justify-between px-4 py-2 rounded"
                   style={{ background: 'rgba(0,0,0,0.08)', border: '2px solid var(--cup-gold-dark)' }}>
-                  <span style={{ fontFamily: "'Lilita One', cursive", color: 'var(--cup-red)', fontSize: '1.5rem', letterSpacing: '0.2em' }}>{hostCode}</span>
+                  <span style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-red)', fontSize: '1.5rem', letterSpacing: '0.2em' }}>{hostCode}</span>
                   <span className="text-xs" style={{ color: 'var(--cup-gold-dark)' }}>← cambiar</span>
                 </button>
 
-                <p className="text-center text-sm" style={{ color: 'var(--cup-bg2)' }}>¡Ponle un nombre épico!</p>
+                <p className="text-center text-sm" style={{ color: 'var(--cup-gold-dark)' }}>¡Ponle un nombre épico!</p>
 
                 <input ref={nameRef} value={teamName}
                   onChange={(e) => { setTeamName(e.target.value); setError('') }}
                   onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
                   maxLength={30} placeholder="Los Transformers..."
                   className="cup-input text-xl font-bold"
-                  style={{ fontFamily: "'Lilita One', cursive" }}
+                  style={{ fontFamily: "'Orbitron', sans-serif" }}
                 />
 
                 {error && <p className="text-center text-sm font-bold" style={{ color: 'var(--cup-red)' }}>⚠ {error}</p>}
@@ -167,7 +228,7 @@ export default function JoinPage() {
                         <span className="w-4 h-4 border-2 border-black/40 border-t-black rounded-full animate-spin" />
                         Entrando...
                       </span>
-                    : '⚔️ ¡A la batalla!'}
+                    : '¡A la batalla!'}
                 </button>
               </motion.div>
             )}

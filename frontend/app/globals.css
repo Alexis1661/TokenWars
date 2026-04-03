@@ -2,191 +2,196 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Fuentes retro ── */
-@import url('https://fonts.googleapis.com/css2?family=Boogaloo&family=Lilita+One&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700&family=Share+Tech+Mono&display=swap');
 
-/* ── Variables de tema Cuphead ── */
 :root {
-  --cup-bg:        #1a0800;
-  --cup-bg2:       #2d1200;
-  --cup-cream:     #f5e6c4;
-  --cup-parchment: #e8d5a3;
-  --cup-red:       #c41010;
-  --cup-red-dark:  #8b0000;
-  --cup-gold:      #d4a017;
-  --cup-gold-dark: #9a7010;
-  --cup-black:     #0d0400;
-  --cup-outline:   3px solid #0d0400;
+  --cup-bg:        #000000;
+  --cup-bg2:       #0d0d0d;
+  --cup-bg3:       #141414;
+  --cup-cream:     #ffffff;
+  --cup-parchment: #111111;
+  --cup-red:       #ff3355;
+  --cup-red-dark:  #cc1133;
+  --cup-gold:      #ffffff;
+  --cup-gold-dark: #999999;
+  --cup-black:     #000000;
+  --cup-purple:    #8b5cf6;
+  --cup-neon:      #a78bfa;
+  --glow-blue:     0 0 12px rgba(139,92,246,0.5), 0 0 30px rgba(139,92,246,0.15);
+  --glow-red:      0 0 12px rgba(255,51,85,0.6),  0 0 30px rgba(255,51,85,0.2);
 }
 
-/* ── Base ── */
 *, *::before, *::after { box-sizing: border-box; }
-
-html { background: var(--cup-bg); }
+html { background: #000; }
 
 body {
-  background: var(--cup-bg);
-  color: var(--cup-cream);
-  font-family: 'Boogaloo', cursive;
-  font-size: 18px;
-  /* Grain de película */
+  background: #000;
+  color: #fff;
+  font-family: 'Exo 2', sans-serif;
+  font-size: 16px;
+}
+
+h1, h2, h3 {
+  font-family: 'Orbitron', sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ── Panel ── */
+.cup-panel {
+  background: #0d0d0d;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
   position: relative;
 }
-
-/* Grain overlay global */
-body::after {
+.cup-panel::before {
   content: '';
-  position: fixed;
-  inset: 0;
+  position: absolute;
+  top: 0; left: 20px; right: 20px; height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,0.12), transparent);
   pointer-events: none;
-  z-index: 9999;
-  opacity: 0.04;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 128px;
-}
-
-/* ── Tipografía ── */
-h1, h2, h3, .cup-title {
-  font-family: 'Lilita One', cursive;
-  letter-spacing: 0.02em;
-}
-
-/* ── Utilidades Cuphead ── */
-
-/* Panel pergamino con borde art-deco */
-.cup-panel {
-  background: var(--cup-cream);
-  color: var(--cup-black);
-  border: 4px solid var(--cup-black);
-  box-shadow:
-    inset 0 0 0 3px var(--cup-gold),
-    6px 6px 0 var(--cup-black);
-  border-radius: 4px;
 }
 
 .cup-panel-dark {
-  background: var(--cup-bg2);
-  color: var(--cup-cream);
-  border: 4px solid var(--cup-gold);
-  box-shadow:
-    inset 0 0 0 2px var(--cup-gold-dark),
-    6px 6px 0 var(--cup-black);
-  border-radius: 4px;
+  background: #080808;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
 }
 
-/* Botón rojo estilo Cuphead */
+/* ── Botón ── */
 .cup-btn {
-  font-family: 'Lilita One', cursive;
-  background: var(--cup-red);
-  color: var(--cup-cream);
-  border: 4px solid var(--cup-black);
-  box-shadow: 5px 5px 0 var(--cup-black);
-  border-radius: 4px;
-  letter-spacing: 0.05em;
-  transition: transform 0.08s, box-shadow 0.08s;
+  font-family: 'Orbitron', sans-serif;
+  background: #111;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  transition: all 0.12s ease;
   cursor: pointer;
 }
 .cup-btn:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 7px 7px 0 var(--cup-black);
+  background: #1a1a1a;
+  border-color: rgba(255,255,255,0.35);
+  transform: translateY(-1px);
 }
-.cup-btn:active {
-  transform: translate(3px, 3px);
-  box-shadow: 2px 2px 0 var(--cup-black);
-}
+.cup-btn:active  { transform: translateY(1px); }
 .cup-btn:disabled {
-  background: #555;
-  color: #999;
-  box-shadow: 3px 3px 0 var(--cup-black);
-  transform: none;
+  background: #0a0a0a;
+  color: #333;
+  border-color: #1a1a1a;
   cursor: not-allowed;
+  transform: none;
 }
 
-/* Botón dorado */
 .cup-btn-gold {
-  background: var(--cup-gold);
-  color: var(--cup-black);
+  background: #fff;
+  color: #000;
+  border-color: #fff;
 }
-.cup-btn-gold:hover { box-shadow: 7px 7px 0 var(--cup-black); }
+.cup-btn-gold:hover {
+  background: #e5e5e5;
+  border-color: #e5e5e5;
+  box-shadow: 0 0 20px rgba(255,255,255,0.15);
+}
 
-/* Botón oscuro */
 .cup-btn-dark {
-  background: var(--cup-bg2);
-  color: var(--cup-cream);
-  border-color: var(--cup-gold);
-  box-shadow: 5px 5px 0 var(--cup-gold-dark);
+  background: #0d0d0d;
+  color: #999;
+  border-color: rgba(255,255,255,0.08);
 }
 
-/* Input estilo Cuphead */
+/* ── Input ── */
 .cup-input {
-  background: var(--cup-parchment);
-  color: var(--cup-black);
-  border: 4px solid var(--cup-black);
-  box-shadow: inset 0 0 0 2px var(--cup-gold-dark);
-  border-radius: 4px;
-  font-family: 'Boogaloo', cursive;
-  font-size: 1.1rem;
+  background: #111;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  font-family: 'Exo 2', sans-serif;
+  font-size: 1rem;
   outline: none;
   width: 100%;
   padding: 0.75rem 1rem;
+  transition: border-color 0.15s;
 }
-.cup-input:focus {
-  box-shadow: inset 0 0 0 2px var(--cup-gold), 0 0 0 3px var(--cup-gold);
-}
-.cup-input::placeholder { color: #8b7340; }
+.cup-input:focus { border-color: rgba(255,255,255,0.4); }
+.cup-input::placeholder { color: #444; }
 
-/* Texto con outline cartoon */
+/* ── Texto shiny ── */
 .cup-text-outline {
-  -webkit-text-stroke: 2px var(--cup-black);
-  text-shadow: 3px 3px 0 var(--cup-black);
+  color: #fff;
+  text-shadow: 0 0 30px rgba(255,255,255,0.3);
 }
 
-/* Divisor decorativo */
+/* ── Divisor ── */
 .cup-divider {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  color: var(--cup-gold);
-  font-family: 'Lilita One', cursive;
-  font-size: 1.2rem;
+  display: flex; align-items: center; gap: 0.75rem;
+  color: #444;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
 }
-.cup-divider::before,
-.cup-divider::after {
-  content: '';
-  flex: 1;
-  height: 3px;
-  background: linear-gradient(to right, transparent, var(--cup-gold));
+.cup-divider::before, .cup-divider::after {
+  content: ''; flex: 1; height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,0.1));
 }
 .cup-divider::after {
-  background: linear-gradient(to left, transparent, var(--cup-gold));
+  background: linear-gradient(to left, transparent, rgba(255,255,255,0.1));
 }
 
-/* Badge/chip */
+/* ── Badge ── */
 .cup-badge {
-  font-family: 'Lilita One', cursive;
-  background: var(--cup-red);
-  color: var(--cup-cream);
-  border: 3px solid var(--cup-black);
-  box-shadow: 3px 3px 0 var(--cup-black);
+  font-family: 'Orbitron', sans-serif;
+  background: #111;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 4px;
-  padding: 0.15rem 0.75rem;
-  font-size: 0.85rem;
-  letter-spacing: 0.05em;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   display: inline-block;
 }
 
-/* Fondo con patrón de estrellas decorativas */
+/* ── Fondo con grid tenue ── */
 .cup-stars-bg {
   background-image:
-    radial-gradient(circle, rgba(212,160,23,0.15) 1px, transparent 1px);
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: var(--cup-bg); }
-::-webkit-scrollbar-thumb {
-  background: var(--cup-gold-dark);
-  border: 2px solid var(--cup-black);
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #333; }
+
+/* ── Animaciones ── */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
 }
+@keyframes shiny-sweep {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+@keyframes glitch-1 {
+  0%, 100% { clip-path: inset(0 0 95% 0); transform: translate(-2px, 0); }
+  20%       { clip-path: inset(30% 0 50% 0); transform: translate(2px, 0); }
+  40%       { clip-path: inset(60% 0 20% 0); transform: translate(-1px, 0); }
+  60%       { clip-path: inset(10% 0 80% 0); transform: translate(1px, 0); }
+  80%       { clip-path: inset(80% 0 5% 0);  transform: translate(-2px, 0); }
+}
+@keyframes glitch-2 {
+  0%, 100% { clip-path: inset(50% 0 30% 0); transform: translate(2px, 0); opacity: 0.8; }
+  25%       { clip-path: inset(20% 0 60% 0); transform: translate(-2px, 0); }
+  50%       { clip-path: inset(70% 0 10% 0); transform: translate(1px, 0); }
+  75%       { clip-path: inset(5% 0 85% 0);  transform: translate(-1px, 0); }
+}
+
+.animate-float { animation: float 3s ease-in-out infinite; }

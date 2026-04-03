@@ -14,10 +14,10 @@ export function TokenBadge({ balance, delta }: { balance: number; delta?: number
 
   return (
     <div className="relative cup-badge flex items-center gap-2 px-4 py-2"
-      style={{ background: 'var(--cup-gold)', color: 'var(--cup-black)', fontSize: '1.1rem' }}>
-      <span>💰</span>
+      style={{ background: 'rgba(168,85,247,0.12)', color: 'var(--cup-gold)', fontSize: '1.1rem', border: '1px solid var(--cup-gold)', boxShadow: 'var(--glow-blue)' }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cup-gold)', display: 'inline-block' }} />
       <motion.span key={balance} initial={{ scale: 1.3 }} animate={{ scale: 1 }}
-        style={{ fontFamily: "'Lilita One', cursive" }}>
+        style={{ fontFamily: "'Orbitron', sans-serif" }}>
         {balance.toLocaleString()} T
       </motion.span>
       <AnimatePresence>
@@ -26,7 +26,7 @@ export function TokenBadge({ balance, delta }: { balance: number; delta?: number
             initial={{ opacity: 1, y: 0 }} animate={{ opacity: 0, y: delta > 0 ? -30 : 30 }}
             transition={{ duration: 1.5 }}
             className="absolute -top-8 left-1/2 -translate-x-1/2 pointer-events-none font-black text-base"
-            style={{ fontFamily: "'Lilita One', cursive", color: delta > 0 ? '#166534' : 'var(--cup-red)', WebkitTextStroke: '1px black' }}>
+            style={{ fontFamily: "'Orbitron', sans-serif", color: delta > 0 ? '#9333ea' : 'var(--cup-red)', WebkitTextStroke: '1px black' }}>
             {delta > 0 ? '+' : ''}{delta}
           </motion.span>
         )}

@@ -1,5 +1,9 @@
 {
   "permissions": {
+    "allow": [
+      "WebFetch(domain:www.reactbits.dev)",
+      "WebFetch(domain:github.com)"
+    ],
     "additionalDirectories": [
       "C:\\Users\\alexd\\Universidad\\OctavoSemestre\\IA\\TokenWars\\frontend\\app\\play"
     ]

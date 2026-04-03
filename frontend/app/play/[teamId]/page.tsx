@@ -1,4 +1,5 @@
 'use client'
+import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import { usePublicGameData } from '@/hooks/usePublicGameData'
 import { useTeamData } from '@/hooks/useTeamData'
@@ -7,7 +8,7 @@ import { TokenBadge } from '@/components/ui/TokenBadge'
 import { TypeOrDie } from '@/components/level1/TypeOrDie'
 import { Millonario } from '@/components/level2/Millonario'
 import { LaTraicion } from '@/components/level3/LaTraicion'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Level1Round, Level2Question, Level3Question } from '@/lib/types'
 
@@ -22,20 +23,38 @@ export default function PlayPage() {
   const [activeQuestion2, setActiveQuestion2] = useState<Level2Question | null>(null)
   const [activeQuestion3, setActiveQuestion3] = useState<Level3Question | null>(null)
 
+  // Cargar la ronda activa y suscribirse a cambios de rondas
+  const fetchActiveRound = useCallback((sid: string) => {
+    supabase
+      .from('level1_rounds')
+      .select('*')
+      .eq('session_id', sid)
+      .is('finished_at', null)
+      .order('round_number')
+      .limit(1)
+      .single()
+      .then(({ data }) => setActiveRound(data ?? null))
+  }, [])
+
   // Cargar contenido según el nivel actual
   useEffect(() => {
     if (!session) return
 
     if (session.status === 'level1') {
-      supabase
-        .from('level1_rounds')
-        .select('*')
-        .eq('session_id', session.id)
-        .is('finished_at', null)
-        .order('round_number')
-        .limit(1)
-        .single()
-        .then(({ data }) => setActiveRound(data))
+      fetchActiveRound(session.id)
+
+      // Suscripción Realtime: cuando una ronda se marca como finished, cargar la siguiente
+      const channel = supabase
+        .channel(`rounds-${session.id}`)
+        .on('postgres_changes', {
+          event: 'UPDATE', schema: 'public', table: 'level1_rounds',
+          filter: `session_id=eq.${session.id}`,
+        }, () => {
+          fetchActiveRound(session.id)
+        })
+        .subscribe()
+
+      return () => { supabase.removeChannel(channel) }
     }
 
     if (session.status === 'level2') {
@@ -72,7 +91,7 @@ export default function PlayPage() {
   }
   if (!team || !session) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--cup-bg)', color: 'var(--cup-red)', fontFamily: "'Lilita One', cursive", fontSize: '1.5rem' }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--cup-bg)', color: 'var(--cup-red)', fontFamily: "'Orbitron', sans-serif", fontSize: '1.5rem' }}>
         Equipo o sesión no encontrada.
       </div>
     )
@@ -87,21 +106,21 @@ export default function PlayPage() {
 
       {/* Header */}
       <header className="flex justify-between items-center px-4 py-3 sticky top-0 z-10"
-        style={{ borderBottom: '4px solid var(--cup-gold)', background: 'var(--cup-bg2)' }}>
+        style={{ borderBottom: '1px solid var(--cup-gold-dark)', background: 'var(--cup-bg2)' }}>
         <div className="flex items-center gap-2">
-          <span className="text-xl">🎮</span>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--cup-gold)', boxShadow: 'var(--glow-blue)' }} />
           <div>
-            <p className="text-xs uppercase" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Lilita One', cursive", letterSpacing: '0.1em', lineHeight: 1 }}>Equipo</p>
-            <h1 style={{ fontFamily: "'Lilita One', cursive", color: 'var(--cup-cream)', fontSize: '1.3rem', lineHeight: 1 }}>{team.name}</h1>
+            <p className="text-xs uppercase" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Orbitron', sans-serif", letterSpacing: '0.1em', lineHeight: 1 }}>Equipo</p>
+            <h1 style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-cream)', fontSize: '1.3rem', lineHeight: 1 }}>{team.name}</h1>
           </div>
         </div>
         <TokenBadge balance={team.token_balance} delta={delta} />
       </header>
 
       {/* Contenido */}
-      <div className="p-4">
+      <div className={session.status === 'level1' ? '' : 'p-4'}>
         {session.status === 'lobby' && <LobbyScreen hostCode={session.host_code} />}
-        {session.status === 'level1' && activeRound && <TypeOrDie round={activeRound} teamId={team.id} />}
+        {session.status === 'level1' && activeRound && <TypeOrDie key={activeRound.id} round={activeRound} teamId={team.id} />}
         {session.status === 'level1' && !activeRound && <WaitingScreen message="Esperando la próxima ronda..." />}
         {session.status === 'level2' && activeQuestion2 && (
           <Millonario question={activeQuestion2} team={team} allTeams={teams} revealed={!!activeQuestion2.revealed_at} correctAnswers={{}} />
@@ -113,8 +132,7 @@ export default function PlayPage() {
         {session.status === 'level3' && !activeQuestion3 && <WaitingScreen message="Esperando la siguiente ronda..." />}
         {session.status === 'finished' && (
           <div className="py-12 text-center flex flex-col items-center gap-6">
-            <p className="text-6xl">🏆</p>
-            <h2 style={{ fontFamily: "'Lilita One', cursive", color: 'var(--cup-gold)', fontSize: '2.5rem' }}
+            <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '2.5rem' }}
               className="cup-text-outline">¡JUEGO TERMINADO!</h2>
             <div className="w-full max-w-sm">
               <Scoreboard teams={teams} highlightTeamId={team.id} />
@@ -126,7 +144,7 @@ export default function PlayPage() {
       {/* Scoreboard fijo abajo */}
       {hasScoreboard && (
         <aside className="fixed bottom-0 left-0 right-0 z-10 p-3"
-          style={{ borderTop: '4px solid var(--cup-gold)', background: 'var(--cup-bg2)' }}>
+          style={{ borderTop: '1px solid var(--cup-gold-dark)', background: 'var(--cup-bg2)' }}>
           <Scoreboard teams={teams} highlightTeamId={team.id} />
         </aside>
       )}
@@ -137,15 +155,25 @@ export default function PlayPage() {
 function LobbyScreen({ hostCode }: { hostCode: string }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] gap-6 p-8 text-center">
-      <div className="text-6xl animate-bounce" style={{ animationDuration: '2s' }}>🎮</div>
-      <h2 style={{ fontFamily: "'Lilita One', cursive", color: 'var(--cup-gold)', fontSize: '2rem' }}
+      <motion.div
+        className="animate-float"
+        style={{ width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg, #5b21b6, #7c3aed)', border: '1px solid rgba(168,85,247,0.5)', boxShadow: 'var(--glow-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+          <rect x="6" y="13" width="20" height="3" rx="1.5" fill="rgba(168,85,247,0.9)" />
+          <rect x="14.5" y="5" width="3" height="20" rx="1.5" fill="rgba(168,85,247,0.9)" />
+          <circle cx="7" cy="22" r="3" stroke="rgba(168,85,247,0.6)" strokeWidth="1.5" />
+          <circle cx="25" cy="22" r="3" stroke="rgba(168,85,247,0.6)" strokeWidth="1.5" />
+        </svg>
+      </motion.div>
+      <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '2rem' }}
         className="cup-text-outline">TOKEN WARS</h2>
 
       <div className="cup-panel px-10 py-5 text-center">
-        <p className="text-xs uppercase tracking-widest mb-2" style={{ fontFamily: "'Lilita One', cursive", color: 'var(--cup-gold-dark)' }}>
+        <p className="text-xs uppercase tracking-widest mb-2" style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold-dark)' }}>
           Código de sesión
         </p>
-        <p style={{ fontFamily: "'Lilita One', cursive", color: 'var(--cup-red)', fontSize: '3.5rem', letterSpacing: '0.2em', lineHeight: 1 }}>
+        <p style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-red)', fontSize: '3.5rem', letterSpacing: '0.2em', lineHeight: 1 }}>
           {hostCode}
         </p>
       </div>
@@ -165,7 +193,7 @@ function WaitingScreen({ message }: { message: string }) {
         <div className="absolute inset-0 rounded-full border-4" style={{ borderColor: 'rgba(212,160,23,0.2)' }} />
         <div className="absolute inset-0 rounded-full border-4 border-t-transparent animate-spin" style={{ borderColor: 'var(--cup-gold)', borderTopColor: 'transparent' }} />
       </div>
-      <p style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Boogaloo', cursive", fontSize: '1.1rem' }}>{message}</p>
+      <p style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Exo 2', sans-serif", fontSize: '1.1rem' }}>{message}</p>
     </div>
   )
 }

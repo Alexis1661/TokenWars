@@ -70,7 +70,7 @@ export function LaTraicion({ question, team, allTeams, revealed }: LaTraicionPro
     <div className="flex flex-col gap-6 p-6 max-w-2xl mx-auto">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-white">
-          🗡️ {question.is_final ? 'Pregunta Final' : `Ronda ${question.question_number}`}
+          {question.is_final ? 'Pregunta Final' : `Ronda ${question.question_number}`}
         </h2>
         {phase === 'answering' && (
           <Timer seconds={ANSWER_SECONDS} onExpire={lockAnswer} />
@@ -177,7 +177,7 @@ export function LaTraicion({ question, team, allTeams, revealed }: LaTraicionPro
               disabled={!betTarget}
               className="bg-red-500 hover:bg-red-400 disabled:opacity-40 text-white font-bold py-3 rounded-xl transition-all"
             >
-              🗡️ Apostar {betAmount}T contra {rivals.find((r) => r.id === betTarget)?.name ?? '—'}
+              Apostar {betAmount}T contra {rivals.find((r) => r.id === betTarget)?.name ?? '—'}
             </button>
 
             <button
@@ -207,7 +207,7 @@ export function LaTraicion({ question, team, allTeams, revealed }: LaTraicionPro
             <p className="text-white font-bold text-xl mb-1">¡Reveal!</p>
             {!question.is_final && question.correct_option && (
               <p className="text-green-400 font-mono font-bold text-2xl">
-                ✅ Respuesta correcta: {question.correct_option.toUpperCase()}
+                Respuesta correcta: {question.correct_option.toUpperCase()}
               </p>
             )}
             {question.is_final && (

@@ -70,7 +70,7 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
     <div className="flex flex-col gap-6 p-6 max-w-2xl mx-auto">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-white">🎙️ Pregunta {question.question_number}/3</h2>
+        <h2 className="text-2xl font-bold text-white">Pregunta {question.question_number}/3</h2>
         <span className={`font-bold uppercase text-sm ${difficultyColor}`}>{question.difficulty}</span>
       </div>
 
