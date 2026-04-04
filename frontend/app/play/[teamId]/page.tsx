@@ -10,17 +10,21 @@ import { Millonario } from '@/components/level2/Millonario'
 import { LaTraicion } from '@/components/level3/LaTraicion'
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Level1Round, Level2Question, Level3Question } from '@/lib/types'
+import type { Level1Round, Level2Question, Level3Question, AnswerOption } from '@/lib/types'
 
 export default function PlayPage() {
   const { teamId } = useParams<{ teamId: string }>()
-  const { team, transactions, isLoading: teamLoading } = useTeamData(teamId)
-  const sessionId = team?.session_id ?? ''
+  const { team: teamBase, transactions, isLoading: teamLoading } = useTeamData(teamId)
+  const sessionId = teamBase?.session_id ?? ''
   const { session, teams, isLoading: sessionLoading } = usePublicGameData(sessionId)
+  // Usar el equipo del array público para tener token_balance siempre actualizado
+  // (usePublicGameData recibe los updates de Realtime correctamente)
+  const team = teams.find((t) => t.id === teamId) ?? teamBase
 
   // Datos de la ronda/pregunta activa
   const [activeRound, setActiveRound] = useState<Level1Round | null>(null)
   const [activeQuestion2, setActiveQuestion2] = useState<Level2Question | null>(null)
+  const [correctAnswers2, setCorrectAnswers2] = useState<Record<string, AnswerOption | null>>({})
   const [activeQuestion3, setActiveQuestion3] = useState<Level3Question | null>(null)
 
   // Cargar la ronda activa y suscribirse a cambios de rondas
@@ -58,15 +62,47 @@ export default function PlayPage() {
     }
 
     if (session.status === 'level2') {
-      supabase
-        .from('level2_questions')
-        .select('*')
-        .eq('session_id', session.id)
-        .is('revealed_at', null)
-        .order('question_number')
-        .limit(1)
-        .single()
-        .then(({ data }) => setActiveQuestion2(data))
+      const loadActiveQ2 = () =>
+        supabase
+          .from('level2_questions')
+          .select('*')
+          .eq('session_id', session.id)
+          .is('revealed_at', null)
+          .order('question_number')
+          .limit(1)
+          .single()
+          .then(({ data }) => {
+            setActiveQuestion2(data ?? null)
+            setCorrectAnswers2({})
+          })
+
+      loadActiveQ2()
+
+      const q2Channel = supabase
+        .channel(`level2-questions-${session.id}`)
+        .on('postgres_changes', {
+          event: 'UPDATE', schema: 'public', table: 'level2_questions',
+          filter: `session_id=eq.${session.id}`,
+        }, async (payload) => {
+          const updated = payload.new as Level2Question
+          if (updated.revealed_at) {
+            setActiveQuestion2(prev => prev?.id === updated.id ? updated : prev)
+
+            const { data: answers } = await supabase
+              .from('level2_answers')
+              .select('team_id, selected_option')
+              .eq('question_id', updated.id)
+
+            const map: Record<string, AnswerOption | null> = {}
+            for (const ans of answers ?? []) map[ans.team_id] = ans.selected_option as AnswerOption | null
+            setCorrectAnswers2(map)
+
+            setTimeout(() => loadActiveQ2(), 5000)
+          }
+        })
+        .subscribe()
+
+      return () => { supabase.removeChannel(q2Channel) }
     }
 
     if (session.status === 'level3') {
@@ -123,7 +159,14 @@ export default function PlayPage() {
         {session.status === 'level1' && activeRound && <TypeOrDie key={activeRound.id} round={activeRound} teamId={team.id} />}
         {session.status === 'level1' && !activeRound && <WaitingScreen message="Esperando la próxima ronda..." />}
         {session.status === 'level2' && activeQuestion2 && (
-          <Millonario question={activeQuestion2} team={team} allTeams={teams} revealed={!!activeQuestion2.revealed_at} correctAnswers={{}} />
+          <Millonario
+            key={activeQuestion2.id}
+            question={activeQuestion2}
+            team={team}
+            allTeams={teams}
+            revealed={!!activeQuestion2.revealed_at}
+            correctAnswers={correctAnswers2}
+          />
         )}
         {session.status === 'level2' && !activeQuestion2 && <WaitingScreen message="Esperando la siguiente pregunta..." />}
         {session.status === 'level3' && activeQuestion3 && (

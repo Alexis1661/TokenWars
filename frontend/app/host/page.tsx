@@ -6,7 +6,7 @@ import { usePublicGameData } from '@/hooks/usePublicGameData'
 import { useHostGameData } from '@/hooks/useHostGameData'
 import { Scoreboard } from '@/components/scoreboard/Scoreboard'
 import { supabase } from '@/lib/supabase'
-import type { SessionStatus } from '@/lib/types'
+import type { SessionStatus, Level2Question } from '@/lib/types'
 
 const LEVEL_ORDER: SessionStatus[] = ['lobby', 'level1', 'level2', 'level3', 'finished']
 const LEVEL_LABELS: Record<string, string> = {
@@ -173,7 +173,7 @@ function LobbyScreen({ sessionId, hostCode, teams, onStart, starting }: {
 // ─────────────────────────────────────────────────────────
 // Pantalla 3 — Dashboard
 // ─────────────────────────────────────────────────────────
-function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound }: {
+function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound, activeQuestion2, onRevealQ2, revealingQ2 }: {
   session: ReturnType<typeof usePublicGameData>['session']
   teams: ReturnType<typeof usePublicGameData>['teams']
   events: ReturnType<typeof useHostGameData>['events']
@@ -184,6 +184,9 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
   activeRoundNumber: number | null
   onEndRound: () => void
   endingRound: boolean
+  activeQuestion2: Level2Question | null
+  onRevealQ2: () => void
+  revealingQ2: boolean
 }) {
   const [showEndModal, setShowEndModal] = useState(false)
   const [ending, setEnding] = useState(false)
@@ -348,13 +351,51 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
             </div>
           )}
 
+          {/* Controles — Level 2 */}
+          {session.status === 'level2' && (
+            <div className="flex flex-col gap-3">
+              <div className="cup-panel px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs" style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold-dark)' }}>PREGUNTA ACTIVA</p>
+                  <p style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '1.6rem', lineHeight: 1 }}>
+                    {activeQuestion2 ? `${activeQuestion2.question_number} / 3` : 'Todas reveladas'}
+                  </p>
+                  {activeQuestion2 && (
+                    <p className="text-xs mt-1" style={{ color: 'var(--cup-gold-dark)' }}>
+                      {{ easy: 'FÁCIL — 150T', medium: 'MEDIA — 250T', hard: 'DIFÍCIL — 400T' }[activeQuestion2.difficulty]}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <p className="text-xs text-right" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Orbitron', sans-serif" }}>
+                    {answeredTeamIds.size}/{teams.length} CONFIRMARON
+                  </p>
+                  {activeQuestion2 && !activeQuestion2.revealed_at && (
+                    <button onClick={onRevealQ2} disabled={revealingQ2}
+                      className="cup-btn cup-btn-gold px-6 py-3">
+                      {revealingQ2 ? 'Revelando...' : '🔍 Revelar Respuesta'}
+                    </button>
+                  )}
+                  {(!activeQuestion2 || activeQuestion2.revealed_at) && (
+                    <p className="text-xs" style={{ color: 'var(--cup-gold-dark)' }}>Esperando siguiente...</p>
+                  )}
+                </div>
+              </div>
+              {!activeQuestion2 && (
+                <button onClick={onAdvance} disabled={advancing} className="cup-btn cup-btn-gold text-xl py-4">
+                  {advancing ? 'Avanzando...' : `▶ ${LEVEL_LABELS['level3']}`}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Controles — otros niveles */}
-          {session.status !== 'level1' && nextStatus && nextStatus !== 'finished' && (
+          {session.status !== 'level1' && session.status !== 'level2' && nextStatus && nextStatus !== 'finished' && (
             <button onClick={onAdvance} disabled={advancing} className="cup-btn cup-btn-gold text-2xl py-5">
               {advancing ? 'Avanzando...' : `▶ ${LEVEL_LABELS[nextStatus]}`}
             </button>
           )}
-          {session.status !== 'level1' && nextStatus === 'finished' && (
+          {session.status !== 'level1' && session.status !== 'level2' && nextStatus === 'finished' && (
             <button onClick={onAdvance} disabled={advancing} className="cup-btn text-2xl py-5" style={{ background: 'var(--cup-red)' }}>
               Terminar juego
             </button>
@@ -391,6 +432,8 @@ function HostSession({ sessionId }: { sessionId: string }) {
   const [advancing, setAdvancing] = useState(false)
   const [activeRoundNumber, setActiveRoundNumber] = useState<number | null>(null)
   const [endingRound, setEndingRound] = useState(false)
+  const [activeQuestion2, setActiveQuestion2] = useState<Level2Question | null>(null)
+  const [revealingQ2, setRevealingQ2] = useState(false)
 
   // Track ronda activa durante level1
   useEffect(() => {
@@ -434,6 +477,44 @@ function HostSession({ sessionId }: { sessionId: string }) {
       })
     }
     setEndingRound(false)
+  }
+
+  // Track pregunta activa durante level2
+  useEffect(() => {
+    if (!session || session.status !== 'level2') { setActiveQuestion2(null); return }
+
+    const loadQ2 = () =>
+      supabase
+        .from('level2_questions')
+        .select('*')
+        .eq('session_id', sessionId)
+        .is('revealed_at', null)
+        .order('question_number')
+        .limit(1)
+        .single()
+        .then(({ data }) => setActiveQuestion2(data ?? null))
+
+    loadQ2()
+
+    const channel = supabase.channel(`host-q2-${sessionId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'level2_questions',
+        filter: `session_id=eq.${sessionId}`,
+      }, () => { loadQ2() })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [session, sessionId])
+
+  const revealCurrentQuestion2 = async () => {
+    if (revealingQ2 || !activeQuestion2) return
+    setRevealingQ2(true)
+    await fetch('/api/reveal-question', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionId: activeQuestion2.id }),
+    })
+    setRevealingQ2(false)
   }
 
   if (isLoading) return (
@@ -481,7 +562,10 @@ function HostSession({ sessionId }: { sessionId: string }) {
       answeredTeamIds={answeredTeamIds} betsCount={betsCount}
       onAdvance={advanceLevel} advancing={advancing}
       activeRoundNumber={activeRoundNumber}
-      onEndRound={endCurrentRound} endingRound={endingRound} />
+      onEndRound={endCurrentRound} endingRound={endingRound}
+      activeQuestion2={activeQuestion2}
+      onRevealQ2={revealCurrentQuestion2}
+      revealingQ2={revealingQ2} />
   )
 }
 

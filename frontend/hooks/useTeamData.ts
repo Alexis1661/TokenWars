@@ -35,7 +35,7 @@ export function useTeamData(teamId: string) {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'teams', filter: `id=eq.${teamId}` },
-        (payload) => setTeam(payload.new as Team)
+        (payload) => setTeam((prev) => prev ? { ...prev, ...(payload.new as Team) } : payload.new as Team)
       )
       .on(
         'postgres_changes',

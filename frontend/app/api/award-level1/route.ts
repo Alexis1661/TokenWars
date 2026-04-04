@@ -29,7 +29,6 @@ export async function POST(req: NextRequest) {
     const speedRatio = Math.max(0, 1 - finishedMs / (ROUND_SECONDS * 1000))
     speed    = Math.round(speedRatio * 70)
   } else {
-    // No completó
     const typedLen = sub.typed_text?.length ?? 0
     const progress = Math.min(typedLen / targetLen, 1)
     base = Math.max(0, Math.round(progress * 50) - errors * 2)
@@ -39,27 +38,30 @@ export async function POST(req: NextRequest) {
 
   const tokens = base + accuracy + speed + bonus
 
-  // Obtener balance actual
-  const { data: team } = await admin.from('teams').select('token_balance').eq('id', teamId).single()
-  const currentBalance = team?.token_balance ?? 0
-  const newBalance = currentBalance + tokens
-
   if (tokens > 0) {
-    await Promise.allSettled([
-      admin.from('teams').update({ token_balance: newBalance }).eq('id', teamId),
-      admin.from('token_transactions').insert({
-        team_id: teamId,
-        amount: tokens,
-        reason: 'Nivel 1 — ronda completada',   // columna correcta
-        level: '1',
-        created_at: new Date().toISOString(),
-      }),
-    ])
+    const { error } = await admin.rpc('transfer_tokens', {
+      p_team_id: teamId,
+      p_amount: tokens,
+      p_reason: 'level1_round',
+      p_level: '1',
+      p_ref_id: roundId,
+    })
+    if (error) {
+      console.error('transfer_tokens error:', error)
+      return NextResponse.json({ error: 'Error al otorgar tokens' }, { status: 500 })
+    }
   }
+
+  // Leer saldo actualizado para devolverlo
+  const { data: updatedTeam } = await admin
+    .from('teams')
+    .select('token_balance')
+    .eq('id', teamId)
+    .single()
 
   return NextResponse.json({
     tokens,
-    newBalance,
+    newBalance: updatedTeam?.token_balance ?? tokens,
     breakdown: { base, accuracy, speed, bonus, completed: finishedMs !== null },
   })
 }
