@@ -1,21 +1,22 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import type { Level2Question, AnswerOption, JokerType, Team } from '@/lib/types'
 import Image from 'next/image'
+import { Timer } from '@/components/ui/Timer'
 
 const G = {
   primary: '#facc15',
-  dim:     '#a3a3a3',
-  border:  'rgba(255,255,255,0.1)',
-  bg:      '#030712',
+  dim:     '#94a3b8',
+  border:  'rgba(251,191,36,0.2)',
+  bg:      '#020617',
   panel:   '#111827',
-  error:   '#f87171',
-  green:   '#4ade80',
-  glow:    'none',
-  glowSoft:'none',
+  error:   '#ef4444',
+  green:   '#22c55e',
 }
+
+const QUESTION_SECONDS = 30
 
 const JOKERS: { type: JokerType; label: string; cost: number }[] = [
   { type: 'fifty_fifty',  label: '50 / 50',        cost: 80  },
@@ -42,10 +43,10 @@ function IntroScreen({ questionNumber, onDone }: { questionNumber: number; onDon
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-[80] flex overflow-y-auto p-4 md:p-8"
-      style={{ background: 'rgba(3,7,18,0.98)', fontFamily: 'monospace' }}
+      style={{ background: '#020617', fontFamily: "'Exo 2', sans-serif" }}
     >
-      <div className="fixed inset-0 pointer-events-none" style={{
-        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(255,255,255,0.012) 3px, rgba(255,255,255,0.012) 4px)',
+      <div className="fixed inset-0 pointer-events-none opacity-20" style={{
+        backgroundImage: 'radial-gradient(circle at center, #1e293b 0%, #020617 100%)',
       }} />
       
       <div className="relative z-10 m-auto flex flex-col items-center gap-6 w-full max-w-4xl py-4">
@@ -58,24 +59,20 @@ function IntroScreen({ questionNumber, onDone }: { questionNumber: number; onDon
             key={cd}
             initial={{ scale: 1.4, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            style={{ color: cd <= 3 ? G.error : G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.4rem', textShadow: G.glow }}
+            style={{ color: cd <= 3 ? G.error : G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.4rem' }}
           >
             [{cd.toString().padStart(2, '0')}]
           </motion.span>
         </div>
 
-        <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.8rem', textAlign: 'center', textShadow: G.glow }}>
+        <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.8rem', textAlign: 'center', textShadow: '0 0 10px rgba(250,204,21,0.4)' }}>
           ¿QUIÉN QUIERE SER MILLONARIO?
         </h2>
 
         <div className="flex flex-col md:flex-row gap-6 w-full">
-          
-          {/* Historia Completa */}
-          <div className="md:w-[55%] flex flex-col gap-4" style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 8, padding: '20px' }}>
-            <p style={{ color: G.primary, fontSize: '0.68rem', letterSpacing: '0.2em' }}>
-              {'>'} DESCANSO FATAL
-            </p>
-            <div className="w-full rounded-md overflow-hidden" style={{ border: `1px solid ${G.border}` }}>
+          <div className="md:w-[55%] flex flex-col gap-4" style={{ background: '#1e293b', border: `1px solid rgba(255,255,255,0.1)`, borderRadius: 8, padding: '20px' }}>
+            <p style={{ color: G.primary, fontSize: '0.68rem', letterSpacing: '0.2em' }}>{'>'} DESCANSO FATAL</p>
+            <div className="w-full rounded-md overflow-hidden" style={{ border: `1px solid rgba(255,255,255,0.1)` }}>
               <Image src="/images/nivel2.png" alt="David viendo TV" width={800} height={450} style={{ width: '100%', height: 'auto', display: 'block' }} className="grayscale opacity-75" />
             </div>
             <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', lineHeight: 1.65 }}>
@@ -83,10 +80,7 @@ function IntroScreen({ questionNumber, onDone }: { questionNumber: number; onDon
             </p>
           </div>
 
-          {/* Reglas Laterales */}
           <div className="md:w-[45%] flex flex-col gap-4">
-            
-            {/* Reloj animado (moved to lateral para dar espacio) */}
             <div className="flex items-center justify-center py-2">
               <div className="relative" style={{ width: 80, height: 80 }}>
                 <svg className="-rotate-90" width="80" height="80" viewBox="0 0 80 80">
@@ -99,24 +93,20 @@ function IntroScreen({ questionNumber, onDone }: { questionNumber: number; onDon
                   />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.2rem', textShadow: G.glow }}>
-                    {cd}
-                  </span>
+                  <span style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.2rem' }}>{cd}</span>
                 </div>
               </div>
             </div>
-
             {[
               { title: 'OBJETIVO', body: 'Conquista a la audiencia respondiendo las preguntas teóricas de opción múltiple. Acertar te otorgará tokens valiosos para tu equipo según la dificultad formulada.' },
               { title: 'COMODINES ESTRATÉGICOS', body: 'Gasta tus preciados tokens para asegurarte la victoria: elimina opciones con el 50/50, pide un consejo llamando al profesor, o espía remotamente la decisión de un equipo rival.' },
             ].map(({ title, body }) => (
-              <div key={title} style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 8, padding: '16px 20px' }}>
+              <div key={title} style={{ background: '#1e293b', border: `1px solid rgba(255,255,255,0.1)`, borderRadius: 8, padding: '16px 20px' }}>
                 <p style={{ color: G.primary, fontSize: '0.65rem', letterSpacing: '0.2em', marginBottom: 6 }}>{'>'} {title}</p>
                 <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', lineHeight: 1.6 }}>{body}</p>
               </div>
             ))}
           </div>
-
         </div>
       </div>
     </motion.div>
@@ -145,80 +135,14 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
   const [spyTargetLocked, setSpyTargetLocked] = useState(false)
   const [showSpyPicker, setShowSpyPicker] = useState(false)
 
-  // Solo mostrar intro en la primera pregunta
+  const handleLockRef = useRef<() => void>(() => {})
+
   useEffect(() => {
     if (question.question_number !== 1) setPhase('playing')
   }, [question.question_number])
 
-  const handleIntroEnd = useCallback(() => setPhase('playing'), [])
-
-  const handleJoker = async (joker: JokerType) => {
-    if (jokerUsed || phase !== 'playing') return
-    const def = JOKERS.find(j => j.type === joker)!
-    if (team.token_balance < def.cost) return
-
-    if (joker === 'fifty_fifty') {
-      const wrong = OPTIONS.filter(o => o !== question.correct_option)
-      const toElim = wrong.sort(() => Math.random() - 0.5).slice(0, 2)
-      setEliminatedOptions(toElim)
-      if (selected && toElim.includes(selected)) setSelected(null)
-      setJokerUsed(joker)
-      setTokensSpent(def.cost)
-      return
-    }
-
-    if (joker === 'spy') {
-      setShowSpyPicker(true)
-      return
-    }
-
-    // call_teacher: solo visual
-    setJokerUsed(joker)
-    setTokensSpent(def.cost)
-  }
-
-  const handleSpySelect = async (targetTeamId: string) => {
-    setShowSpyPicker(false)
-    setSpyTarget(targetTeamId)
-    setSpyLoading(true)
-    setSpyFetched(false)
-    setJokerUsed('spy')
-    setTokensSpent(150)
-
-    const { data } = await supabase
-      .from('level2_answers')
-      .select('selected_option, is_locked')
-      .eq('question_id', question.id)
-      .eq('team_id', targetTeamId)
-      .maybeSingle()
-
-    setSpyAnswer((data?.selected_option as AnswerOption) ?? null)
-    setSpyTargetLocked(data?.is_locked ?? false)
-    setSpyLoading(false)
-    setSpyFetched(true)
-
-    setTimeout(() => {
-      setSpyFetched(false)
-    }, 3000)
-  }
-
-  const handleSelection = async (opt: AnswerOption) => {
-    setSelected(opt)
+  const handleLock = useCallback(async () => {
     if (phase !== 'playing' || revealed) return
-
-    supabase.from('level2_answers').upsert({
-      question_id: question.id,
-      team_id: team.id,
-      selected_option: opt,
-      joker_used: jokerUsed,
-      joker_target_id: spyTarget,
-      tokens_spent: tokensSpent,
-      is_locked: false,
-    }, { onConflict: 'question_id,team_id' }).then(() => {})
-  }
-
-  const handleLock = async () => {
-    if (!selected || phase !== 'playing') return
     setPhase('locked')
 
     await supabase.from('level2_answers').upsert({
@@ -231,339 +155,211 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
       is_locked: true,
       answered_at: new Date().toISOString(),
     }, { onConflict: 'question_id,team_id' })
+  }, [selected, jokerUsed, spyTarget, tokensSpent, question.id, team.id, phase, revealed])
+
+  useEffect(() => { handleLockRef.current = handleLock }, [handleLock])
+
+  const handleJoker = async (joker: JokerType) => {
+    if (jokerUsed || phase !== 'playing' || revealed) return
+    const def = JOKERS.find(j => j.type === joker)!
+    if (team.token_balance < def.cost) return
+
+    if (joker === 'fifty_fifty') {
+      const wrong = OPTIONS.filter(o => o !== question.correct_option)
+      const toElim = wrong.sort(() => Math.random() - 0.5).slice(0, 2)
+      setEliminatedOptions(toElim)
+      if (selected && toElim.includes(selected)) setSelected(null)
+      setJokerUsed(joker)
+      setTokensSpent(def.cost)
+      return
+    }
+    if (joker === 'spy') { setShowSpyPicker(true); return }
+    setJokerUsed(joker); setTokensSpent(def.cost)
+  }
+
+  const handleSpySelect = async (tid: string) => {
+    setShowSpyPicker(false); setSpyTarget(tid); setSpyLoading(true); setSpyFetched(false); setJokerUsed('spy'); setTokensSpent(150)
+    const { data } = await supabase.from('level2_answers').select('selected_option, is_locked').eq('question_id', question.id).eq('team_id', tid).maybeSingle()
+    setSpyAnswer((data?.selected_option as AnswerOption) ?? null); setSpyTargetLocked(data?.is_locked ?? false); setSpyLoading(false); setSpyFetched(true)
+    setTimeout(() => setSpyFetched(false), 6000)
+  }
+
+  const handleSelection = async (opt: AnswerOption) => {
+    if (phase !== 'playing' || revealed) return
+    setSelected(opt)
+    supabase.from('level2_answers').upsert({
+      question_id: question.id, team_id: team.id, selected_option: opt, joker_used: jokerUsed, joker_target_id: spyTarget, tokens_spent: tokensSpent, is_locked: false,
+    }, { onConflict: 'question_id,team_id' })
   }
 
   const diffLabel = { easy: 'FÁCIL', medium: 'MEDIA', hard: 'DIFÍCIL' }[question.difficulty]
   const diffColor = { easy: G.green, medium: G.primary, hard: G.error }[question.difficulty]
   const reward    = { easy: 150, medium: 250, hard: 400 }[question.difficulty]
-
   const myAnswer = revealed ? (correctAnswers[team.id] ?? null) : selected
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center p-4 md:p-8" style={{ background: '#03050a' }}>
+    <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center p-4 md:p-8" style={{ background: '#020617' }}>
+      
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120vw] h-[120vw] opacity-[0.03] rotate-45"
+             style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.2) 1px, transparent 1px)', backgroundSize: '100px 100px' }} />
+      </div>
+
       <AnimatePresence>
         {phase === 'intro' && question.question_number === 1 && (
-          <IntroScreen key="intro" questionNumber={question.question_number} onDone={handleIntroEnd} />
+          <IntroScreen key="intro" questionNumber={question.question_number} onDone={() => setPhase('playing')} />
         )}
       </AnimatePresence>
 
-      {/* Modal selector de equipo espía */}
       <AnimatePresence>
         {showSpyPicker && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-6"
-            style={{ background: 'rgba(0,0,0,0.85)' }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 12 }} animate={{ scale: 1, y: 0 }}
-              style={{ background: G.panel, border: `1px solid ${G.primary}`, borderRadius: 10, padding: 24, width: '100%', maxWidth: 320 }}
-            >
-              <p style={{ color: G.primary, fontFamily: 'monospace', fontSize: '0.75rem', letterSpacing: '0.2em', marginBottom: 14 }}>
-                {'>'} ESPÍA — ¿A QUIÉN QUIERES ESPIAR?
-              </p>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[90] flex items-center justify-center p-6 bg-black/80">
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-slate-900 border border-yellow-500/50 p-6 rounded-xl w-full max-w-sm">
+              <p className="text-yellow-500 font-mono text-sm tracking-widest mb-4 uppercase">Elija un rival para espiar</p>
               <div className="flex flex-col gap-2">
                 {allTeams.filter(t => t.id !== team.id).map(t => (
-                  <button key={t.id} onClick={() => handleSpySelect(t.id)}
-                    style={{ background: G.bg, border: `1px solid ${G.border}`, borderRadius: 6, padding: '10px 14px', color: '#fff', fontFamily: "'Exo 2', sans-serif", textAlign: 'left', cursor: 'pointer' }}>
-                    {t.name}
-                  </button>
+                  <button key={t.id} onClick={() => handleSpySelect(t.id)} className="p-3 bg-slate-800 border border-slate-700 rounded-lg text-white hover:border-yellow-500 transition-colors text-left">{t.name}</button>
                 ))}
               </div>
-              <button onClick={() => setShowSpyPicker(false)}
-                style={{ marginTop: 12, background: 'transparent', border: 'none', color: G.dim, fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'monospace' }}>
-                Cancelar
-              </button>
+              <button onClick={() => setShowSpyPicker(false)} className="mt-4 text-slate-500 text-xs">Cancelar</button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Estilos locales para los efectos de TV vieja */}
-      <style>{`
-        @keyframes scanlineGlitch {
-          0% { transform: translateY(-100%); opacity: 0.05; }
-          4% { opacity: 0.4; transform: translateY(0%); }
-          8% { opacity: 0.05; transform: translateY(100%); }
-          100% { transform: translateY(100%); opacity: 0.05; }
-        }
-        @keyframes signalFlicker {
-          0%, 96% { filter: contrast(1) brightness(1); transform: none; opacity: 1; }
-          96.5% { filter: contrast(1.5) hue-rotate(15deg) brightness(1.2); transform: skewX(1deg) translateX(4px); opacity: 0.8; }
-          97% { filter: contrast(1) invert(0.1); transform: skewX(-2deg) translateX(-6px); opacity: 0.6; }
-          97.5% { filter: contrast(1.2) hue-rotate(-10deg); transform: skewX(2deg) translateY(2px); opacity: 0.9; }
-          98% { filter: contrast(1) brightness(1); transform: none; opacity: 1; }
-          100% { filter: contrast(1) brightness(1); transform: none; opacity: 1; }
-        }
-      `}</style>
-
-      {/* MARCO DEL TELEVISOR (TV BEZEL - ESTILO MADERA RETRO) */}
-      <div className="relative w-full max-w-4xl mx-auto rounded-[40px] shadow-[0_20px_40px_rgba(0,0,0,0.95)] flex mt-6"
-           style={{ 
-             background: '#7B4A3A', 
-             border: '10px solid #4A281E', 
-             borderBottomWidth: '24px',
-             borderRightWidth: '35px',
-             padding: '16px 100px 16px 16px', 
-             boxShadow: 'inset 4px 4px 10px rgba(255,255,255,0.2), inset -4px -4px 10px rgba(0,0,0,0.4)',
-             maxHeight: '90vh'
-           }}>
-           
-        {/* Antenas retro de conejo */}
-        <div className="absolute top-[-60px] left-[35%] w-2 h-20 bg-[#a3a3a3] rotate-[-20deg] origin-bottom border-2 border-[#555] rounded-t-full shadow-lg -z-10">
-          <div className="absolute top-[-6px] left-[-4px] w-3 h-3 bg-[#777] rounded-full" />
-        </div>
-        <div className="absolute top-[-75px] left-[40%] w-2 h-24 bg-[#a3a3a3] rotate-[30deg] origin-bottom border-2 border-[#555] rounded-t-full shadow-lg -z-10">
-          <div className="absolute top-[-6px] left-[-4px] w-3 h-3 bg-[#777] rounded-full" />
-        </div>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative z-10 w-full max-w-5xl flex flex-col gap-8">
         
-        {/* PANTALLA CRÍTICA (TV SCREEN) */}
-        <div className="relative w-full h-full rounded-[24px] overflow-auto flex flex-col py-4 md:py-6 border-[12px] border-[#131111]" 
-             style={{ 
-               background: 'radial-gradient(circle at 50% 40%, #0c1840 0%, #010308 80%)', 
-               boxShadow: 'inset 0 0 30px rgba(0,0,0,0.95)',
-               animation: 'signalFlicker 8s infinite'
-             }}>
-          
-          {/* Efectos visuales de CRT (Scanlines, Viñeta, Ruido estático) */}
-          <div className="pointer-events-none absolute inset-0 z-[60] opacity-40 mix-blend-overlay" 
-               style={{ background: 'linear-gradient(rgba(255, 255, 255, 0.05) 50%, rgba(0, 0, 0, 0.4) 50%)', backgroundSize: '100% 4px' }} />
-          
-          {/* Glitch Overlay Blanco intermitente (Bad Signal) */}
-          <div className="pointer-events-none absolute inset-0 w-full h-[150px] bg-white opacity-10 z-[61] mix-blend-overlay"
-               style={{ animation: 'scanlineGlitch 6s infinite linear' }} />
-          
-          <div className="pointer-events-none absolute inset-0 z-[60] shadow-[inset_0_0_120px_rgba(0,0,0,0.9)]" />
-          <div className="pointer-events-none absolute inset-0 z-[60] bg-blue-400 opacity-[0.02] mix-blend-color-dodge" />
-
-          {/* CONTENIDO ORIGINAL DE MILLONARIO */}
-          <div className="relative z-10 flex flex-col gap-5 p-2 w-full max-w-3xl mx-auto overflow-y-auto">
-
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <span style={{ color: '#fff', fontSize: '0.85rem', letterSpacing: '0.1em', background: 'linear-gradient(90deg, #1e3a8a, transparent)', padding: '4px 12px', borderRadius: 20, border: '1px solid #3b82f6' }}>
-              PREGUNTA {question.question_number} / 3
-            </span>
-            <span style={{ color: diffColor, fontSize: '0.8rem', fontWeight: 'bold', border: `1px solid ${diffColor}`, borderRadius: 20, padding: '4px 12px' }}>
-              {diffLabel}
-            </span>
+        <header className="flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="flex flex-col">
+              <span className="text-white text-lg font-bold font-orbitron">{team.name}</span>
+              <span className="text-blue-400 text-[10px] font-bold uppercase tracking-widest opacity-70">Tu Equipo</span>
+            </div>
+            <div className="h-10 w-[1px] bg-white/10" />
+            <div className="flex flex-col">
+              <span className="text-yellow-500 text-lg font-bold font-orbitron">{team.token_balance}</span>
+              <span className="text-yellow-500/60 text-[10px] font-bold uppercase tracking-widest opacity-70">Mis Tokens</span>
+            </div>
+            <div className="h-10 w-[1px] bg-white/10" />
+            <div className="flex items-center gap-3">
+              <div className="px-4 py-1 bg-blue-900/40 border border-blue-500/30 rounded-full flex flex-col items-center">
+                <span className="text-[10px] text-blue-300 font-bold uppercase opacity-60">Pregunta</span>
+                <span className="text-sm text-white font-orbitron">{question.question_number} / 3</span>
+              </div>
+              <div className="px-4 py-1 border rounded-full flex flex-col items-center" style={{ borderColor: diffColor + '44', backgroundColor: diffColor + '11' }}>
+                <span className="text-[10px] uppercase font-bold opacity-60" style={{ color: diffColor }}>Nivel</span>
+                <span className="text-sm font-orbitron font-bold" style={{ color: diffColor }}>{diffLabel}</span>
+              </div>
+            </div>
           </div>
-          <span style={{ fontFamily: "'Orbitron', sans-serif", color: '#fbbf24', fontSize: '1.4rem', textShadow: '0 0 10px rgba(251,191,36,0.6)' }}>
-            +{reward} <span style={{ fontSize: '1rem' }}>TOKENS</span>
-          </span>
-        </div>
 
-        {/* Pregunta */}
-        <div className="relative flex items-center justify-center w-full" style={{ minHeight: 120 }}>
-          <div className="absolute w-full h-[2px] bg-[#fbbf24] top-1/2 -mt-[1px] -z-10 opacity-50" />
-          <div style={{
-            background: 'linear-gradient(180deg, #1e3a8a 0%, #0a1128 100%)',
-            border: '2px solid #fbbf24',
-            borderRadius: 60,
-            padding: '24px 48px',
-            boxShadow: '0 0 15px rgba(251,191,36,0.2), inset 0 0 20px rgba(0,0,0,0.8)',
-            maxWidth: '90%',
-            textAlign: 'center'
-          }}>
-            <p style={{ color: '#fff', fontSize: '1.2rem', lineHeight: 1.5, fontFamily: "'Exo 2', sans-serif", fontWeight: 500 }}>
-              {question.question_text}
-            </p>
+          <div className="flex items-center gap-6">
+            {phase === 'playing' && !revealed && (
+              <Timer 
+                seconds={QUESTION_SECONDS} 
+                startedAt={question.started_at ? new Date(question.started_at).getTime() : undefined} 
+                onExpire={() => handleLockRef.current?.()} 
+              />
+            )}
+            <div className="text-right flex flex-col items-end">
+              <span className="text-yellow-500 text-3xl font-bold font-orbitron drop-shadow-[0_0_12px_rgba(250,204,21,0.5)]">+{reward}</span>
+              <span className="text-yellow-500/40 text-[10px] font-bold uppercase tracking-widest">Tokens en juego</span>
+            </div>
+          </div>
+        </header>
+
+        <div className="relative flex items-center justify-center min-h-[160px]">
+          <div className="absolute w-full h-[2px] bg-yellow-500/30" />
+          <div className="relative z-10 w-full max-w-4xl bg-gradient-to-b from-blue-900 to-slate-900 border-4 border-yellow-500 p-8 rounded-[80px] shadow-[0_0_40px_rgba(250,204,21,0.15)] text-center">
+            <p className="text-white text-xl md:text-2xl font-bold leading-relaxed">{question.question_text}</p>
           </div>
         </div>
 
-        {/* Opciones */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {OPTIONS.map(opt => {
             const isEliminated = eliminatedOptions.includes(opt)
             const isSelected   = !revealed && selected === opt
             const isCorrect    = revealed && opt === question.correct_option
             const isMyWrong    = revealed && myAnswer === opt && opt !== question.correct_option
 
-            let borderColor = '#3b82f6' // Blue border by default
-            let bgColor     = 'linear-gradient(180deg, #172554 0%, #080f26 100%)'
-            let textColor   = isEliminated ? 'rgba(255,255,255,0.18)' : '#fff'
-            let optLetterColor = '#fbbf24' // Gold letter
-
-            if (isSelected) { borderColor = '#fbbf24'; bgColor = 'linear-gradient(180deg, #b45309 0%, #451a03 100%)'; textColor = '#fff' }
-            if (isCorrect)  { borderColor = '#4ade80'; bgColor = 'linear-gradient(180deg, #166534 0%, #052e16 100%)'; optLetterColor = '#4ade80' }
-            if (isMyWrong)  { borderColor = '#f87171'; bgColor = 'linear-gradient(180deg, #991b1b 0%, #450a0a 100%)'; optLetterColor = '#f87171' }
+            let bColor = 'rgba(59,130,246,0.5)', bg = 'from-slate-900 to-blue-950', sh = 'none'
+            if (isSelected) { bColor = '#facc15'; bg = 'from-yellow-900/40 to-yellow-950/40'; sh = '0 0 20px rgba(250,204,21,0.2)' }
+            if (isCorrect)  { bColor = '#22c55e'; bg = 'from-green-900/40 to-green-950/40'; sh = '0 0 20px rgba(34,197,94,0.3)' }
+            if (isMyWrong)  { bColor = '#ef4444'; bg = 'from-red-900/40 to-red-950/40'; sh = '0 0 20px rgba(239,68,68,0.3)' }
 
             const canClick = !isEliminated && !revealed && phase === 'playing'
-
             return (
-              <div key={opt} className="relative flex items-center w-full">
-                <div className="absolute w-full h-[2px] bg-[#fbbf24] top-1/2 -mt-[1px] -z-10 opacity-30" />
-                <motion.button
-                  whileTap={canClick ? { scale: 0.98 } : {}}
-                  onClick={() => canClick && handleSelection(opt)}
-                  disabled={!canClick}
-                  className="w-full mx-auto"
-                  style={{
-                    background: bgColor, border: `2px solid ${borderColor}`, borderRadius: 40,
-                    padding: '16px 32px', textAlign: 'left', cursor: canClick ? 'pointer' : 'default',
-                    opacity: isEliminated ? 0.25 : 1, transition: 'all 0.2s',
-                    display: 'flex', alignItems: 'center', gap: 16,
-                    boxShadow: isSelected ? '0 0 15px rgba(251,191,36,0.4)' : 'none',
-                    maxWidth: '95%'
-                  }}
+              <div key={opt} className="relative flex items-center">
+                <div className="absolute w-full h-[1px] bg-yellow-500/20" />
+                <button onClick={() => canClick && handleSelection(opt)} disabled={!canClick}
+                  className={`relative z-10 w-full mx-4 py-4 px-8 border-2 rounded-full text-left transition-all duration-200 bg-gradient-to-r ${bg} ${canClick ? 'hover:scale-[1.02] cursor-pointer' : 'cursor-default'} ${isEliminated ? 'opacity-10' : 'opacity-100'}`}
+                  style={{ borderColor: bColor, boxShadow: sh }}
                 >
-                  <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '1.2rem', color: optLetterColor, flexShrink: 0, fontWeight: 700 }}>
-                    {opt.toUpperCase()}:
-                  </span>
-                  <span style={{ color: textColor, fontFamily: "'Exo 2', sans-serif", fontSize: '1rem', lineHeight: 1.4 }}>
-                    {optionText(question, opt)}
-                  </span>
-                </motion.button>
+                  <span className="font-orbitron font-bold text-yellow-500 mr-4">{opt.toUpperCase()}:</span>
+                  <span className="text-white font-medium">{optionText(question, opt)}</span>
+                </button>
               </div>
             )
           })}
         </div>
 
-        {/* Resultado del espía */}
-        <AnimatePresence>
-          {jokerUsed === 'spy' && (spyLoading || spyFetched) && (
-            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-              style={{ background: 'rgba(250,204,21,0.06)', border: `1px solid rgba(250,204,21,0.3)`, borderRadius: 8, padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ fontFamily: 'monospace', color: G.primary, fontSize: '0.78rem' }}>
-                {spyLoading
-                  ? 'Consultando respuesta...'
-                  : spyAnswer === null
-                  ? 'El equipo aún no ha seleccionado ninguna opción.'
-                  : spyTargetLocked
-                    ? `${allTeams.find(t => t.id === spyTarget)?.name ?? 'Equipo'} ya bloqueó la respuesta: ${spyAnswer.toUpperCase()}`
-                    : `${allTeams.find(t => t.id === spyTarget)?.name ?? 'Equipo'} ha seleccionado '${spyAnswer.toUpperCase()}', pero pueden cambiar de decisión aún.`}
-              </span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div className="flex flex-col gap-4">
+          <AnimatePresence>
+            {jokerUsed === 'spy' && (spyLoading || spyFetched) && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-xl text-center font-mono text-sm text-blue-300">
+                {spyLoading ? '📡 Espiando satélite...' : spyAnswer ? `🎯 El rival ha marcado: ${spyAnswer.toUpperCase()}${spyTargetLocked ? ' (BLOQUEADO)' : ''}` : '❓ El rival aún no decide.'}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        {/* Comodines */}
-        {phase === 'playing' && !revealed && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {JOKERS.map(j => {
-              const canAfford = team.token_balance >= j.cost
-              const active    = jokerUsed === j.type
-              return (
-                <button key={j.type}
-                  onClick={() => handleJoker(j.type)}
-                  disabled={!!jokerUsed || !canAfford}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '7px 14px', borderRadius: 20,
-                    border: `1px solid ${active ? G.primary : G.border}`,
-                    background: active ? 'rgba(250,204,21,0.1)' : G.panel,
-                    color: active ? G.primary : canAfford && !jokerUsed ? '#fff' : G.dim,
-                    opacity: (!canAfford || (!!jokerUsed && !active)) ? 0.4 : 1,
-                    cursor: !jokerUsed && canAfford ? 'pointer' : 'not-allowed',
-                    fontFamily: "'Exo 2', sans-serif", fontSize: '0.82rem', transition: 'all 0.12s',
-                  }}
-                >
-                  {j.label}
-                  <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: active ? G.primary : G.dim }}>
-                    {j.cost}T
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Botón confirmar */}
-        {phase === 'playing' && !revealed && (
-          <button onClick={handleLock} disabled={!selected}
-            className="cup-btn cup-btn-gold"
-            style={{ padding: '13px', fontSize: '0.85rem', opacity: selected ? 1 : 0.35, cursor: selected ? 'pointer' : 'not-allowed' }}
-          >
-            Confirmar Respuesta
-          </button>
-        )}
-
-        {/* Esperando reveal */}
-        {phase === 'locked' && !revealed && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            style={{ background: G.panel, border: `1px solid ${G.primary}`, borderRadius: 8, padding: '16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
-              style={{ borderColor: G.primary, borderTopColor: 'transparent', flexShrink: 0 }} />
-            <div>
-              <p style={{ color: G.primary, fontFamily: 'monospace', fontSize: '0.78rem', letterSpacing: '0.1em' }}>
-                Respuesta bloqueada: {selected?.toUpperCase()}
-              </p>
-              <p style={{ color: G.dim, fontSize: '0.72rem', marginTop: 2 }}>
-                Esperando que el profesor revele la respuesta...
-              </p>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Reveal — panel de resultados de todos los equipos */}
-        <AnimatePresence>
-          {revealed && (
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-              style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ padding: '10px 14px', borderBottom: `1px solid ${G.border}` }}>
-                <p style={{ color: G.primary, fontFamily: 'monospace', fontSize: '0.68rem', letterSpacing: '0.2em' }}>
-                  {'>'} RESPUESTAS DEL SALÓN
-                </p>
-              </div>
-              <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {allTeams.map(t => {
-                  const ans     = correctAnswers[t.id]
-                  const correct = ans === question.correct_option
-                  const isMe    = t.id === team.id
+          <footer className="flex flex-wrap items-center justify-between gap-6 pt-4">
+            {!revealed && (
+              <div className="flex gap-2">
+                {JOKERS.map(j => {
+                  const canAf = team.token_balance >= j.cost, act = jokerUsed === j.type
                   return (
-                    <div key={t.id} style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '6px 8px', borderRadius: 6,
-                      background: isMe ? 'rgba(255,255,255,0.04)' : 'transparent',
-                    }}>
-                      <span style={{ color: isMe ? '#fff' : 'rgba(255,255,255,0.6)', fontFamily: "'Exo 2', sans-serif", fontSize: '0.88rem' }}>
-                        {isMe && <span style={{ color: G.primary, marginRight: 4 }}>▸</span>}
-                        {t.name}
-                      </span>
-                      <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '0.82rem', color: !ans ? G.dim : correct ? G.green : G.error }}>
-                        {!ans ? '—' : `${ans.toUpperCase()} ${correct ? '✓' : '✗'}`}
-                      </span>
-                    </div>
+                    <button key={j.type} onClick={() => handleJoker(j.type)} disabled={!!jokerUsed || !canAf || phase === 'locked'}
+                      className={`px-4 py-2 rounded-full border text-sm font-bold transition-all ${act ? 'bg-yellow-500 border-yellow-400 text-black' : (canAf && !jokerUsed && phase !== 'locked' ? 'bg-blue-900/40 border-blue-500/50 text-white hover:bg-blue-800/40' : 'opacity-30 border-slate-700 text-slate-500 cursor-not-allowed')}`}
+                    >
+                      {j.label} <span className="text-[10px] ml-1 opacity-70">({j.cost}T)</span>
+                    </button>
                   )
                 })}
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            )}
+            <div className="flex gap-4">
+              {phase === 'playing' && !revealed && (
+                <button onClick={handleLock} disabled={!selected} className={`bg-yellow-500 hover:bg-yellow-400 text-black font-bold px-8 py-3 rounded-full tracking-widest ${!selected ? 'opacity-30 cursor-not-allowed' : 'hover:scale-105 shadow-[0_0_20px_rgba(250,204,21,0.3)]'}`}>Confirmar</button>
+              )}
+              {phase === 'locked' && !revealed && (
+                <div className="flex items-center gap-3 px-6 py-3 bg-blue-950 border border-blue-500/50 rounded-full text-yellow-500 font-mono text-sm tracking-widest">
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse shadow-[0_0_8px_#facc15]" />
+                  <span>BLOQUEADO: {selected?.toUpperCase() || '?'}</span>
+                </div>
+              )}
+            </div>
+          </footer>
 
+          <AnimatePresence>
+            {revealed && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900/80 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl">
+                <div className="bg-slate-800/50 px-6 py-2 border-b border-slate-700 font-mono text-[10px] text-slate-400 tracking-[0.3em]">RESUMEN RONDA</div>
+                <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {allTeams.map(t => {
+                    const ans = correctAnswers[t.id], correct = ans === question.correct_option, isMe = t.id === team.id
+                    return (
+                      <div key={t.id} className={`p-3 rounded-xl border ${isMe ? 'bg-blue-900/20 border-blue-500/40' : 'bg-slate-800/30 border-slate-700'}`}>
+                        <p className={`text-[10px] mb-1 truncate ${isMe ? 'text-blue-300 font-bold' : 'text-slate-400'}`}>{isMe && '▸ '}{t.name}</p>
+                        <p className={`text-lg font-orbitron ${!ans ? 'text-slate-600' : correct ? 'text-green-500' : 'text-red-500'}`}>{!ans ? '--' : `${ans.toUpperCase()} ${correct ? '✓' : '✗'}`}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-        
-        </div>
-
-        {/* Panel lateral de controles (Estilo TV de perillas) */}
-        <div className="absolute right-[18px] top-1/2 -translate-y-1/2 flex flex-col items-center gap-8">
-          {/* Dial grande superior */}
-          <div className="w-14 h-14 rounded-full bg-[#111] border-[4px] border-[#25150f] flex items-center justify-center rotate-[30deg] shadow-[inset_0_0_5px_rgba(0,0,0,1),_3px_3px_5px_rgba(0,0,0,0.6)] cursor-pointer hover:rotate-[45deg] transition-transform">
-            <div className="w-10 h-2.5 bg-[#4A281E] rounded-full" />
-          </div>
-          
-          {/* Dial pequeño inferior */}
-          <div className="w-10 h-10 rounded-full bg-[#111] border-[3px] border-[#25150f] flex items-center justify-center -rotate-[15deg] shadow-[inset_0_0_5px_rgba(0,0,0,1),_2px_2px_4px_rgba(0,0,0,0.6)] cursor-pointer hover:rotate-[-5deg] transition-transform">
-            <div className="w-6 h-1.5 bg-[#4A281E] rounded-full" />
-          </div>
-          
-          {/* Rejilla de la bocina (Speaker Grill) */}
-          <div className="flex flex-col gap-2 mt-4 items-center">
-            <div className="w-10 h-1.5 bg-[#4A281E] rounded-full shadow-inner opacity-80" />
-            <div className="w-10 h-1.5 bg-[#4A281E] rounded-full shadow-inner opacity-80" />
-            <div className="w-10 h-1.5 bg-[#4A281E] rounded-full shadow-inner opacity-80" />
-            <div className="w-10 h-1.5 bg-[#4A281E] rounded-full shadow-inner opacity-80" />
-          </div>
-          
-          {/* Indicador de encendido en el panel */}
-          <div className="mt-6 flex flex-col items-center gap-1">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-500 border border-red-900 shadow-[0_0_10px_#ef4444,inset_0_0_2px_#fff]" />
-          </div>
-        </div>
-
-      </div>
-
+      </motion.div>
     </div>
   )
 }

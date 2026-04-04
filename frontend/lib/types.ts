@@ -84,6 +84,7 @@ export interface Level2Question {
   option_d: string
   correct_option: AnswerOption
   tokens_reward: number
+  started_at: string | null
   revealed_at: string | null
 }
 
