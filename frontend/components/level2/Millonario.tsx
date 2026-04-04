@@ -129,10 +129,9 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
   const [tokensSpent, setTokensSpent] = useState(0)
   const [eliminatedOptions, setEliminatedOptions] = useState<AnswerOption[]>([])
   const [spyTarget, setSpyTarget] = useState<string | null>(null)
-  const [spyLoading, setSpyLoading] = useState(false)
   const [spyAnswer, setSpyAnswer] = useState<AnswerOption | null>(null)
-  const [spyFetched, setSpyFetched] = useState(false)
   const [spyTargetLocked, setSpyTargetLocked] = useState(false)
+  const spyChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const [showSpyPicker, setShowSpyPicker] = useState(false)
 
   const handleLockRef = useRef<() => void>(() => {})
@@ -159,6 +158,21 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
 
   useEffect(() => { handleLockRef.current = handleLock }, [handleLock])
 
+  useEffect(() => {
+    return () => {
+      if (spyChannelRef.current) {
+        supabase.removeChannel(spyChannelRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (revealed && spyChannelRef.current) {
+      supabase.removeChannel(spyChannelRef.current)
+      spyChannelRef.current = null
+    }
+  }, [revealed])
+
   const handleJoker = async (joker: JokerType) => {
     if (jokerUsed || phase !== 'playing' || revealed) return
     const def = JOKERS.find(j => j.type === joker)!
@@ -170,18 +184,65 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
       setEliminatedOptions(toElim)
       if (selected && toElim.includes(selected)) setSelected(null)
       setJokerUsed(joker)
-      setTokensSpent(def.cost)
+      setTokensSpent(0)
+      fetch('/api/use-joker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId: team.id, questionId: question.id, jokerType: joker, cost: def.cost }),
+      })
       return
     }
     if (joker === 'spy') { setShowSpyPicker(true); return }
-    setJokerUsed(joker); setTokensSpent(def.cost)
+    setJokerUsed(joker)
+    setTokensSpent(0)
+    fetch('/api/use-joker', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teamId: team.id, questionId: question.id, jokerType: joker, cost: def.cost }),
+    })
   }
 
   const handleSpySelect = async (tid: string) => {
-    setShowSpyPicker(false); setSpyTarget(tid); setSpyLoading(true); setSpyFetched(false); setJokerUsed('spy'); setTokensSpent(150)
-    const { data } = await supabase.from('level2_answers').select('selected_option, is_locked').eq('question_id', question.id).eq('team_id', tid).maybeSingle()
-    setSpyAnswer((data?.selected_option as AnswerOption) ?? null); setSpyTargetLocked(data?.is_locked ?? false); setSpyLoading(false); setSpyFetched(true)
-    setTimeout(() => setSpyFetched(false), 6000)
+    setShowSpyPicker(false)
+    setSpyTarget(tid)
+    setJokerUsed('spy')
+    setTokensSpent(0)
+
+    fetch('/api/use-joker', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teamId: team.id, questionId: question.id, jokerType: 'spy', cost: 150 }),
+    })
+
+    const { data } = await supabase
+      .from('level2_answers')
+      .select('selected_option, is_locked')
+      .eq('question_id', question.id)
+      .eq('team_id', tid)
+      .maybeSingle()
+    setSpyAnswer((data?.selected_option as AnswerOption) ?? null)
+    setSpyTargetLocked(data?.is_locked ?? false)
+
+    const channel = supabase
+      .channel(`spy-${question.id}-${tid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'level2_answers',
+          filter: `question_id=eq.${question.id}`,
+        },
+        (payload: any) => {
+          if (payload.new?.team_id === tid) {
+            setSpyAnswer((payload.new.selected_option as AnswerOption) ?? null)
+            setSpyTargetLocked(payload.new.is_locked ?? false)
+          }
+        }
+      )
+      .subscribe()
+
+    spyChannelRef.current = channel
   }
 
   const handleSelection = async (opt: AnswerOption) => {
@@ -305,9 +366,11 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
 
         <div className="flex flex-col gap-4">
           <AnimatePresence>
-            {jokerUsed === 'spy' && (spyLoading || spyFetched) && (
+            {jokerUsed === 'spy' && spyTarget && !revealed && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-xl text-center font-mono text-sm text-blue-300">
-                {spyLoading ? '📡 Espiando satélite...' : spyAnswer ? `🎯 El rival ha marcado: ${spyAnswer.toUpperCase()}${spyTargetLocked ? ' (BLOQUEADO)' : ''}` : '❓ El rival aún no decide.'}
+                {spyAnswer
+                  ? `🎯 El rival ha marcado: ${spyAnswer.toUpperCase()}${spyTargetLocked ? ' (BLOQUEADO)' : ''}`
+                  : '❓ El rival aún no decide.'}
               </motion.div>
             )}
           </AnimatePresence>

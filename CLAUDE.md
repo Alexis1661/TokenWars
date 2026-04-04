@@ -63,7 +63,7 @@ Professor creates session (/host)
   → Supabase: inserts game_session row
   → Background fetch to Python backend POST /seed
       → LangChain + Groq (llama-3.3-70b-versatile)
-      → Supabase: inserts L1 rounds + L2/L3 questions
+      → Supabase: inserts L1 rounds only (L2/L3 questions are hardcoded in supabase_service.py)
   → Fallback: if Python backend unavailable, Next.js calls /api/seed-session internally
 
 Teams join (/join) → directed to /play/[teamId]
@@ -104,6 +104,9 @@ All clients sync via Supabase Realtime subscriptions
 - `award-level1` — calculates positions and calls Supabase `transfer_tokens` RPC
 - `reveal-question` — sets `revealed_at` on a `level2_questions` row, calculates `is_correct` and awards tokens via `transfer_tokens` RPC
 - `reconnect` — reconnects a device to an existing team
+- `use-joker` — immediately charges joker cost via `transfer_tokens` (L2); token balance updates via Realtime
+- `reveal-level3` — marks `revealed_at`, evaluates correctness, settles all bets via `transfer_tokens` RPC
+- `award-final-vote` — counts `final_votes`, awards +300T to winner (tie-break: lowest balance)
 
 ### Backend Generators (`backend-ai/generators/`)
 
@@ -145,3 +148,5 @@ const G = {
 - **`supabaseAdmin` en cliente:** `SUPABASE_SERVICE_ROLE_KEY` no está disponible en el browser. El cliente admin usa `anonKey` como fallback en `lib/supabase.ts` — es inofensivo porque el admin nunca se llama desde el cliente.
 - **`components/reactbits/`:** Contiene componentes que importan desde `'motion/react'` (no instalado). El proyecto usa `framer-motion`. Cualquier nuevo componente de reactbits necesita cambiar esos imports.
 - **Tipos de DB:** Si TypeScript se queja de un campo faltante en una interfaz de `lib/types.ts`, verificar el schema en `TokenWarsGuiaCompleta.md` — la DB puede tener columnas que no están tipadas aún (ej: `technical_content` en `Level1Round`).
+- **`main.py --seed-all` KeyError:** El path CLI crashea con `KeyError: 'display'` — los generators retornan `trace_before/trace_highlight/trace_after`, no `display`. El path web via `api.py POST /seed` no tiene este problema.
+- **TypeScript check:** Ejecutar `npx tsc --noEmit` desde `frontend/` para validar tipos sin compilar.

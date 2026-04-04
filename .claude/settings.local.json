@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(curl -s \"https://raw.githubusercontent.com/DavidHDev/react-bits/main/src/ts-tailwind/TextAnimations/DecryptedText/DecryptedText.tsx\")",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

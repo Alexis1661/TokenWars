@@ -106,15 +106,36 @@ export default function PlayPage() {
     }
 
     if (session.status === 'level3') {
-      supabase
-        .from('level3_questions')
-        .select('*')
-        .eq('session_id', session.id)
-        .is('revealed_at', null)
-        .order('question_number')
-        .limit(1)
-        .single()
-        .then(({ data }) => setActiveQuestion3(data))
+      const loadActiveQ3 = () =>
+        supabase
+          .from('level3_questions')
+          .select('*')
+          .eq('session_id', session.id)
+          .is('revealed_at', null)
+          .order('question_number')
+          .limit(1)
+          .single()
+          .then(({ data }) => setActiveQuestion3(data ?? null))
+
+      loadActiveQ3()
+
+      const q3Channel = supabase
+        .channel(`level3-questions-${session.id}`)
+        .on('postgres_changes', {
+          event: 'UPDATE', schema: 'public', table: 'level3_questions',
+          filter: `session_id=eq.${session.id}`,
+        }, (payload) => {
+          const updated = payload.new as Level3Question
+          if (updated.revealed_at) {
+            setActiveQuestion3(prev => prev?.id === updated.id ? updated : prev)
+            if (!updated.is_final) {
+              setTimeout(() => loadActiveQ3(), 5000)
+            }
+          }
+        })
+        .subscribe()
+
+      return () => { supabase.removeChannel(q3Channel) }
     }
   }, [session])
 
@@ -170,7 +191,7 @@ export default function PlayPage() {
         )}
         {session.status === 'level2' && !activeQuestion2 && <WaitingScreen message="Esperando la siguiente pregunta..." />}
         {session.status === 'level3' && activeQuestion3 && (
-          <LaTraicion question={activeQuestion3} team={team} allTeams={teams} revealed={!!activeQuestion3.revealed_at} />
+          <LaTraicion key={activeQuestion3.id} question={activeQuestion3} team={team} allTeams={teams} revealed={!!activeQuestion3.revealed_at} />
         )}
         {session.status === 'level3' && !activeQuestion3 && <WaitingScreen message="Esperando la siguiente ronda..." />}
         {session.status === 'finished' && (

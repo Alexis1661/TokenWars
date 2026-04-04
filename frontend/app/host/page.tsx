@@ -6,7 +6,7 @@ import { usePublicGameData } from '@/hooks/usePublicGameData'
 import { useHostGameData } from '@/hooks/useHostGameData'
 import { Scoreboard } from '@/components/scoreboard/Scoreboard'
 import { supabase } from '@/lib/supabase'
-import type { SessionStatus, Level2Question } from '@/lib/types'
+import type { SessionStatus, Level2Question, Level3Question } from '@/lib/types'
 
 const LEVEL_ORDER: SessionStatus[] = ['lobby', 'level1', 'level2', 'level3', 'finished']
 const LEVEL_LABELS: Record<string, string> = {
@@ -173,7 +173,7 @@ function LobbyScreen({ sessionId, hostCode, teams, onStart, starting }: {
 // ─────────────────────────────────────────────────────────
 // Pantalla 3 — Dashboard
 // ─────────────────────────────────────────────────────────
-function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound, activeQuestion2, onRevealQ2, revealingQ2 }: {
+function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound, activeQuestion2, onRevealQ2, revealingQ2, activeQuestion3, onRevealQ3, revealingQ3, finalVoteCounts, onAwardFinalVote, awardingVote }: {
   session: ReturnType<typeof usePublicGameData>['session']
   teams: ReturnType<typeof usePublicGameData>['teams']
   events: ReturnType<typeof useHostGameData>['events']
@@ -187,6 +187,12 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
   activeQuestion2: Level2Question | null
   onRevealQ2: () => void
   revealingQ2: boolean
+  activeQuestion3: Level3Question | null
+  onRevealQ3: () => void
+  revealingQ3: boolean
+  finalVoteCounts: Record<string, number>
+  onAwardFinalVote: () => void
+  awardingVote: boolean
 }) {
   const [showEndModal, setShowEndModal] = useState(false)
   const [ending, setEnding] = useState(false)
@@ -389,13 +395,69 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
             </div>
           )}
 
-          {/* Controles — otros niveles */}
-          {session.status !== 'level1' && session.status !== 'level2' && nextStatus && nextStatus !== 'finished' && (
+          {/* Controles — Level 3 */}
+          {session.status === 'level3' && (
+            <div className="flex flex-col gap-3">
+              <div className="cup-panel px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs" style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold-dark)' }}>PREGUNTA ACTIVA</p>
+                  <p style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '1.6rem', lineHeight: 1 }}>
+                    {activeQuestion3
+                      ? activeQuestion3.is_final ? 'FINAL' : `${activeQuestion3.question_number} / 5`
+                      : 'Todas reveladas'}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <p className="text-xs text-right" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Orbitron', sans-serif" }}>
+                    {answeredTeamIds.size}/{teams.length} RESPONDIERON
+                  </p>
+                  {activeQuestion3 && !activeQuestion3.revealed_at && (
+                    <button onClick={onRevealQ3} disabled={revealingQ3}
+                      className="cup-btn cup-btn-gold px-6 py-3">
+                      {revealingQ3 ? 'Revelando...' : '🔍 Revelar'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {activeQuestion3?.is_final && activeQuestion3.revealed_at && (
+                <div className="cup-panel flex flex-col gap-3 p-4">
+                  <p className="text-xs" style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold-dark)' }}>
+                    VOTOS — PREGUNTA FINAL
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {teams.map((t) => (
+                      <div key={t.id} className="flex items-center justify-between">
+                        <span style={{ color: 'var(--cup-cream)', fontSize: '0.875rem' }}>{t.name}</span>
+                        <span style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '1rem' }}>
+                          {finalVoteCounts[t.id] ?? 0} votos
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={onAwardFinalVote}
+                    disabled={awardingVote || Object.keys(finalVoteCounts).length === 0}
+                    className="cup-btn cup-btn-gold py-3">
+                    {awardingVote ? 'Otorgando...' : '🏆 Cerrar votación y otorgar +300T'}
+                  </button>
+                </div>
+              )}
+
+              {!activeQuestion3 && (
+                <button onClick={onAdvance} disabled={advancing} className="cup-btn cup-btn-gold text-xl py-4">
+                  {advancing ? 'Avanzando...' : '▶ Terminar juego'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Controles — otros niveles (excluye level3 que tiene su propio bloque) */}
+          {session.status !== 'level1' && session.status !== 'level2' && session.status !== 'level3' && nextStatus && nextStatus !== 'finished' && (
             <button onClick={onAdvance} disabled={advancing} className="cup-btn cup-btn-gold text-2xl py-5">
               {advancing ? 'Avanzando...' : `▶ ${LEVEL_LABELS[nextStatus]}`}
             </button>
           )}
-          {session.status !== 'level1' && session.status !== 'level2' && nextStatus === 'finished' && (
+          {session.status !== 'level1' && session.status !== 'level2' && session.status !== 'level3' && nextStatus === 'finished' && (
             <button onClick={onAdvance} disabled={advancing} className="cup-btn text-2xl py-5" style={{ background: 'var(--cup-red)' }}>
               Terminar juego
             </button>
@@ -434,6 +496,10 @@ function HostSession({ sessionId }: { sessionId: string }) {
   const [endingRound, setEndingRound] = useState(false)
   const [activeQuestion2, setActiveQuestion2] = useState<Level2Question | null>(null)
   const [revealingQ2, setRevealingQ2] = useState(false)
+  const [activeQuestion3, setActiveQuestion3] = useState<Level3Question | null>(null)
+  const [revealingQ3, setRevealingQ3] = useState(false)
+  const [finalVoteCounts, setFinalVoteCounts] = useState<Record<string, number>>({})
+  const [awardingVote, setAwardingVote] = useState(false)
 
   // Track ronda activa durante level1
   useEffect(() => {
@@ -506,6 +572,85 @@ function HostSession({ sessionId }: { sessionId: string }) {
     return () => { supabase.removeChannel(channel) }
   }, [session, sessionId])
 
+  // Track active question during level3
+  useEffect(() => {
+    if (!session || session.status !== 'level3') { setActiveQuestion3(null); return }
+
+    const loadQ3 = () =>
+      supabase
+        .from('level3_questions')
+        .select('*')
+        .eq('session_id', sessionId)
+        .is('revealed_at', null)
+        .order('question_number')
+        .limit(1)
+        .single()
+        .then(({ data }) => setActiveQuestion3(data ?? null))
+
+    loadQ3()
+
+    const channel = supabase.channel(`host-q3-${sessionId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'level3_questions',
+        filter: `session_id=eq.${sessionId}`,
+      }, () => { loadQ3() })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [session, sessionId])
+
+  // Subscribe to final_votes when final question is revealed
+  useEffect(() => {
+    if (!activeQuestion3?.is_final || !activeQuestion3.revealed_at) return
+
+    const votesChannel = supabase.channel(`host-final-votes-${activeQuestion3.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'final_votes',
+        filter: `question_id=eq.${activeQuestion3.id}`,
+      }, (payload) => {
+        const votedId = (payload.new as { voted_team_id: string }).voted_team_id
+        setFinalVoteCounts(prev => ({ ...prev, [votedId]: (prev[votedId] ?? 0) + 1 }))
+      })
+      .subscribe()
+
+    // Load existing votes
+    supabase
+      .from('final_votes')
+      .select('voted_team_id')
+      .eq('question_id', activeQuestion3.id)
+      .then(({ data }) => {
+        const counts: Record<string, number> = {}
+        for (const v of data ?? []) {
+          counts[v.voted_team_id] = (counts[v.voted_team_id] ?? 0) + 1
+        }
+        setFinalVoteCounts(counts)
+      })
+
+    return () => { supabase.removeChannel(votesChannel) }
+  }, [activeQuestion3?.id, activeQuestion3?.is_final, activeQuestion3?.revealed_at])
+
+  const revealCurrentQuestion3 = async () => {
+    if (revealingQ3 || !activeQuestion3) return
+    setRevealingQ3(true)
+    await fetch('/api/reveal-level3', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionId: activeQuestion3.id }),
+    })
+    setRevealingQ3(false)
+  }
+
+  const awardFinalVote = async () => {
+    if (awardingVote || !activeQuestion3) return
+    setAwardingVote(true)
+    await fetch('/api/award-final-vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionId: activeQuestion3.id }),
+    })
+    setAwardingVote(false)
+  }
+
   const revealCurrentQuestion2 = async () => {
     if (revealingQ2 || !activeQuestion2) return
     setRevealingQ2(true)
@@ -565,7 +710,13 @@ function HostSession({ sessionId }: { sessionId: string }) {
       onEndRound={endCurrentRound} endingRound={endingRound}
       activeQuestion2={activeQuestion2}
       onRevealQ2={revealCurrentQuestion2}
-      revealingQ2={revealingQ2} />
+      revealingQ2={revealingQ2}
+      activeQuestion3={activeQuestion3}
+      onRevealQ3={revealCurrentQuestion3}
+      revealingQ3={revealingQ3}
+      finalVoteCounts={finalVoteCounts}
+      onAwardFinalVote={awardFinalVote}
+      awardingVote={awardingVote} />
   )
 }
 
