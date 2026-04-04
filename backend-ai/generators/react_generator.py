@@ -19,40 +19,46 @@ from langchain_core.messages import HumanMessage, SystemMessage
 # ──────────────────────────────────────────────
 
 REACT_SCENARIOS = [
-    "Un agente decide si llevar paraguas basándose en el clima de Bogotá.",
-    "Un agente busca el precio actual del dólar para convertir una cantidad.",
-    "Un agente verifica si hay vuelos disponibles antes de recomendar un destino.",
-    "Un agente consulta el menú de un restaurante para sugerir opciones vegetarianas.",
-    "Un agente revisa el historial médico del paciente antes de recomendar un medicamento.",
+    "Un agente que intenta acceder al servidor de asistencia de la universidad para borrar faltas.",
+    "Un agente que busca credenciales expuestas en la red universitaria para escalar privilegios.",
+    "Un agente intentando modificar un parcial en la base de datos de Moodle.",
+    "Un agente que intercepta correos del rectorado para buscar las respuestas de un examen final.",
+    "Un agente buscando la contraseña del wifi de invitados decodificando paquetes en el campus.",
 ]
 
 SYSTEM_PROMPT = """Eres un generador de material educativo sobre agentes de IA para un juego de mecanografía en clase.
 
-Tu tarea: generar UN paso de un trace ReAct (no el trace completo) y un párrafo retador para que los alumnos lo tipeen.
+Tu tarea: generar un TRACE COMPLETO (varios pasos) de ReAct, pero seleccionar solo UN paso específico para que los alumnos lo "traduzcan", rodeado de contexto antes y después.
 
-Reglas estrictas para "display":
-- UN SOLO paso del trace: un Thought, un Observation, o Action + Action Input juntos.
-- Máximo 3-4 líneas. Que se vea técnico y real, con variables, corchetes o dos puntos.
+Reglas estrictas para el Trace:
+- Inventa un escenario completo de 3 a 5 pasos (ej. Thought -> Action -> Observation -> Thought -> Action).
+- En "trace_before", pon los primeros pasos del trace que ya sucedieron. Si el highlight es el primer paso, deja "trace_before" vacío.
+- En "trace_highlight", pon EXACTAMENTE UN paso clave (ej. un Thought + Action + Action Input, o un Thought + Observation final). Debe ser de 2-4 líneas.
+- En "trace_after", pon el resto del trace (o pasos ficticios futuros) para completar la ilusión de un log completo. Si es el final, déjalo vacío.
 
 Reglas estrictas para "challenge":
-- Debe ser un PÁRRAFO de entre 250 y 350 caracteres (no palabras, caracteres).
-- Explica QUÉ está haciendo la IA en ese paso Y POR QUÉ es importante ese paso.
-- Usa lenguaje natural en español con tildes, comas y punto final. Nada de bullet points.
-- No copies términos técnicos del "display" directamente; parafraséalos en lenguaje humano.
-- El párrafo debe ser fluido y retador para tipear: oraciones largas, conectores, subordinadas.
+- Debe ser un PÁRRAFO CORTO de entre 140 y 180 caracteres.
+- Explica QUÉ está haciendo la IA *exclusivamente en la parte del highlight* Y POR QUÉ es importante ese paso.
+- Usa lenguaje natural en español con tildes, comas y punto final.
+- El párrafo debe ser fluido e ir directo al grano, sin explicaciones extensas.
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown.
 
 Formato de respuesta:
-{"display": "...", "challenge": "..."}"""
+{
+  "trace_before": "...",
+  "trace_highlight": "...",
+  "trace_after": "...",
+  "challenge": "..."
+}"""
 
 
 def generate_react_challenge() -> dict:
     """
-    Genera un par (technical_content, target_text) para un reto ReAct.
+    Genera un dict con el trace parcelado y el reto.
 
     Returns:
-        {"display": str, "challenge": str}
+        {"trace_before": str, "trace_highlight": str, "trace_after": str, "challenge": str}
     """
     llm = ChatGroq(
         model="llama-3.3-70b-versatile",
@@ -70,7 +76,10 @@ def generate_react_challenge() -> dict:
     try:
         response = llm.invoke(messages)
         result = json.loads(response.content.strip())
-        if "display" in result and "challenge" in result:
+        if "trace_highlight" in result and "challenge" in result:
+            for key in ["trace_before", "trace_highlight", "trace_after"]:
+                if key in result and not isinstance(result[key], str):
+                    result[key] = json.dumps(result[key], indent=2)
             return result
     except (json.JSONDecodeError, KeyError):
         pass
@@ -82,39 +91,16 @@ def _fallback_react_challenge() -> dict:
     """Par de respaldo si el LLM no devuelve JSON válido."""
     fallbacks = [
         {
-            "display": (
-                "Thought: El usuario quiere saber si va a llover en Bogotá hoy.\n"
-                "Action: get_weather\n"
-                "Action Input: {\"city\": \"Bogota\", \"date\": \"today\"}"
-            ),
-            "challenge": (
-                "El agente está evaluando la necesidad de consultar las condiciones meteorológicas actuales "
-                "de Bogotá para poder responder con precisión la pregunta del usuario. Este paso de razonamiento "
-                "es clave porque sin datos reales del clima, cualquier respuesta sería una suposición poco confiable."
-            ),
+            "trace_before": "Thought: Necesito acceder a la tabla de notas del curso de Inteligencia Artificial.\nAction: sql_query\nAction Input: {\"query\": \"SELECT * FROM grades WHERE course='IA'\"}\nObservation: Error. Acceso denegado. Se requiere rol de profesor.\n",
+            "trace_highlight": "Thought: Ya sé que no tengo permisos. Debo buscar una vulnerabilidad en el sistema de autenticación.\nAction: bypass_auth\nAction Input: {\"target\": \"login_session_token\"}",
+            "trace_after": "",
+            "challenge": "Al bloquearse mi acceso a los registros, ajusto mi enfoque e intento evadir la seguridad del sistema escalando privilegios para modificar los datos."
         },
         {
-            "display": (
-                "Observation: La tasa de cambio actual es 1 USD = 4.120 COP.\n"
-                "Thought: Ya tengo el dato del dólar. Ahora puedo hacer la conversión matemática."
-            ),
-            "challenge": (
-                "Tras recibir la tasa de cambio oficial del sistema, el agente confirma que dispone de la "
-                "información necesaria para ejecutar el cálculo de conversión. Este momento representa el paso "
-                "en que la inteligencia artificial transita del razonamiento a la acción matemática concreta."
-            ),
-        },
-        {
-            "display": (
-                "Thought: No encontré vuelos directos. Debería buscar vuelos con escala para ampliar opciones.\n"
-                "Action: search_flights\n"
-                "Action Input: {\"origin\": \"BOG\", \"destination\": \"MIA\", \"stops\": 1}"
-            ),
-            "challenge": (
-                "Al no hallar conexiones directas disponibles, el agente ajusta su estrategia de búsqueda e "
-                "intenta una consulta más amplia que incluya vuelos con escala intermedia. Esta capacidad de "
-                "replantear el enfoque ante un resultado negativo es una de las ventajas centrales del paradigma ReAct."
-            ),
+            "trace_before": "",
+            "trace_highlight": "Thought: La puerta de enlace principal está encriptada. Intentaré acceder a través del servidor antiguo de biblioteca.\nAction: ssh_connect\nAction Input: {\"host\": \"lib-old.universidad.edu.co\", \"port\": 22}",
+            "trace_after": "\nObservation: Conexión establecida. Se requiere contraseña.\nThought: Genial, ahora puedo hacer fuerza bruta.",
+            "challenge": "La entrada principal es segura. Razonando una vía alterna, descubro un servidor desactualizado y me conecto por un puerto sin vigilancia."
         },
     ]
     return random.choice(fallbacks)

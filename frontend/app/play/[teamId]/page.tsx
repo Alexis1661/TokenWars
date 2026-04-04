@@ -135,7 +135,7 @@ export default function PlayPage() {
 
   const lastTx = transactions[0]
   const delta = lastTx ? lastTx.amount : undefined
-  const hasScoreboard = session.status !== 'finished' && session.status !== 'lobby'
+  const hasScoreboard = session.status !== 'finished' && session.status !== 'lobby' && session.status !== 'level2'
 
   return (
     <main className="min-h-screen cup-stars-bg" style={{ background: 'var(--cup-bg)', paddingBottom: hasScoreboard ? 180 : 0 }}>

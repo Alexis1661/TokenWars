@@ -12,6 +12,7 @@ Uso:
 """
 
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -125,7 +126,11 @@ async def seed_session(body: SeedRequest):
                 session_id=session_id,
                 round_number=cfg["round_number"],
                 output_type=cfg["output_type"],
-                technical_content=challenge["display"],
+                technical_content=json.dumps({
+                    "trace_before": challenge.get("trace_before", ""),
+                    "trace_highlight": challenge.get("trace_highlight", ""),
+                    "trace_after": challenge.get("trace_after", "")
+                }),
                 target_text=challenge["challenge"],
             )
 

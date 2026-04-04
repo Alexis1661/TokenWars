@@ -6,6 +6,7 @@ import { Timer } from '@/components/ui/Timer'
 import { Keyboard } from '@/components/ui/Keyboard'
 import { DecryptedText } from '@/components/ui/DecryptedText'
 import type { Level1Round } from '@/lib/types'
+import Image from 'next/image'
 
 const ROUND_SECONDS = 45
 const INTRO_SECONDS = 15
@@ -29,6 +30,33 @@ function countErrors(typed: string, target: string): number {
   return e
 }
 
+const ROUND_LORE: Record<number, { title: string, desc: string, highlight: string, desc2: string, mission: string, image: string }> = {
+  1: {
+    title: "ACTO 1: EL DESASTRE INICIAL",
+    desc: "David acaba de armar su primer Agente en LangChain. Está probando un protocolo de ",
+    highlight: "razonamiento paso por paso",
+    desc2: ", pero la terminal le escupe registros puros de máquina, crudos y difíciles de interpretar a simple vista.",
+    mission: "Aquí entras tú. Tu misión es interceptar el log de la izquierda, mirar qué dice la sección resaltada, y documentarla sin equivocarte para que David entienda qué piensa su IA.",
+    image: "/images/estudiante_u.png"
+  },
+  2: {
+    title: "ACTO 2: CONEXIÓN EN TIEMPO REAL",
+    desc: "Tras el caos cognitivo, David activó el módulo de ",
+    highlight: "estructuración de funciones",
+    desc2: " nativo. Ahora la IA genera formatos compactos JSON buscando conectarse a ciegas con el servidor de notas de la universidad.",
+    mission: "La máquina se mueve muy rápido. Atrapa la estructura JSON resaltada y traduce su intención a idioma humano antes de que ejecute la modificación.",
+    image: "/images/estudiante_r2.png"
+  },
+  3: {
+    title: "ACTO 3: FALLBACK DE EMERGENCIA",
+    desc: "¡Alerta! El agente de David colapsó intentando inyectar código. Como última medida, el sistema desactivó las funciones estructuradas y volvió a su ",
+    highlight: "bucle de deducción cíclica",
+    desc2: " intentando razonar la salida del error.",
+    mission: "Documenta exactamente los pensamientos críticos (`Thoughts`) o acciones que está sopesando en la línea central. Un error tuyo cerrará la brecha de conexión para siempre.",
+    image: "/images/estudiante_r3.png"
+  }
+}
+
 // ─── Pantalla de introducción (5 s) ───────────────────────
 function IntroScreen({ round, onDone }: { round: Level1Round; onDone: () => void }) {
   const [countdown, setCountdown] = useState(INTRO_SECONDS)
@@ -44,16 +72,16 @@ function IntroScreen({ round, onDone }: { round: Level1Round; onDone: () => void
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-40 flex flex-col items-center justify-center p-8 gap-6"
+      className="fixed inset-0 z-40 flex overflow-y-auto p-4 md:p-8"
       style={{ background: 'rgba(3,7,18,0.98)', fontFamily: 'monospace' }}
     >
       {/* Subtle grid scanline */}
-      <div className="absolute inset-0 pointer-events-none" style={{
+      <div className="fixed inset-0 pointer-events-none" style={{
         backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(255,255,255,0.012) 3px, rgba(255,255,255,0.012) 4px)',
         zIndex: 0,
       }} />
 
-      <div className="relative z-10 flex flex-col items-center gap-6 w-full max-w-3xl">
+      <div className="relative z-10 m-auto flex flex-col items-center gap-6 w-full max-w-4xl py-4">
 
         {/* Header terminal */}
         <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -95,53 +123,56 @@ function IntroScreen({ round, onDone }: { round: Level1Round; onDone: () => void
             {'>'} RONDA {round.round_number} DE 3 — NIVEL 1
           </p>
           <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.6rem', textShadow: G.glow }}>
-            TYPE OR DIE
+            HUMANO EN EL BUCLE
           </h2>
         </div>
 
         {/* Paneles */}
-        <div className="grid grid-cols-2 gap-4 w-full">
-
-          {/* Izquierda — qué ven */}
+        <div className="flex flex-col gap-4 w-full">
+          
+          {/* Historia / Lore */}
           <motion.div
-            initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}
-            style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 8, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+            style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 8, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}
           >
-            <p style={{ color: G.primary, fontSize: '0.68rem', letterSpacing: '0.2em' }}>
-              {'>'} PANEL IZQUIERDO: SALIDA_DEL_AGENTE
+            <p style={{ color: G.primary, fontSize: '0.68rem', letterSpacing: '0.2em', marginBottom: 2 }}>
+              {'>'} TRANSMISIÓN ENTRANTE — {ROUND_LORE[round.round_number as keyof typeof ROUND_LORE]?.title || ROUND_LORE[1].title}
             </p>
-            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', lineHeight: 1.65 }}>
-              Veras el output generado por un agente de IA. Puede ser un registro de su razonamiento interno o una llamada a una herramienta externa. Leelo con atencion.
-            </p>
-            <pre style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${G.border}`, borderRadius: 4, padding: '8px 10px', fontSize: '0.68rem', color: G.dim, lineHeight: 1.6, margin: 0 }}>
-              {'Thought: ...\nAction: ...\nAction Input: ...\n---\n{ "name": "...", "args": {...} }'}
-            </pre>
+            <div className="flex flex-col md:flex-row gap-6 items-center">
+              <div className="md:w-[45%] flex-shrink-0 rounded-md overflow-hidden" style={{ border: `1px solid ${G.border}` }}>
+                <Image src={ROUND_LORE[round.round_number as keyof typeof ROUND_LORE]?.image || ROUND_LORE[1].image} alt="David y su agente" width={800} height={450} style={{ width: '100%', height: 'auto', display: 'block' }} className="grayscale opacity-75" />
+              </div>
+              <div className="flex flex-col gap-4 md:w-[55%]">
+                <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', lineHeight: 1.65 }}>
+                  {ROUND_LORE[round.round_number as keyof typeof ROUND_LORE]?.desc || ROUND_LORE[1].desc}
+                  <span style={{ color: G.primary }}>{ROUND_LORE[round.round_number as keyof typeof ROUND_LORE]?.highlight || ROUND_LORE[1].highlight}</span>
+                  {ROUND_LORE[round.round_number as keyof typeof ROUND_LORE]?.desc2 || ROUND_LORE[1].desc2}
+                </p>
+                <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', lineHeight: 1.65 }}>
+                  {ROUND_LORE[round.round_number as keyof typeof ROUND_LORE]?.mission || ROUND_LORE[1].mission}
+                </p>
+              </div>
+            </div>
           </motion.div>
 
-          {/* Derecha — qué hacen */}
+          {/* Tips y reglas abreviadas */}
           <motion.div
-            initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.45 }}
-            style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 8, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}
           >
-            <p style={{ color: G.primary, fontSize: '0.68rem', letterSpacing: '0.2em' }}>
-              {'>'} PANEL DERECHO: TU_MISION
-            </p>
-            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', lineHeight: 1.65 }}>
-              Transcribe el parrafo que aparece. Ese texto explica en lenguaje humano lo que hizo el agente. Escribe rapido y con precision.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {[
-                { dot: G.primary, text: `Carácter correcto → blanco` },
-                { dot: G.error,   text: `Caracter incorrecto → rojo` },
-                { dot: G.primary, text: `+50T bonus: identifica el tipo al final` },
-                { dot: '#ffcc00', text: `${ROUND_SECONDS}s por ronda` },
-              ].map(({ dot, text }) => (
-                <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0, boxShadow: `0 0 5px ${dot}` }} />
-                  <span style={{ fontSize: '0.73rem', color: 'rgba(255,255,255,0.6)' }}>{text}</span>
+            {[
+              { dot: G.primary, title: 'TRADUCCIÓN', text: 'Transcribe el párrafo.' },
+              { dot: G.error,   title: 'PRECAUCIÓN', text: 'Si fallas, la pantalla parpadea.' },
+              { dot: '#4ade80', title: 'BONUS +50T', text: 'Identifica el patrón al final.' },
+            ].map(({ dot, title, text }) => (
+              <div key={title} style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${G.border}`, borderRadius: 6, padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: dot, boxShadow: `0 0 5px ${dot}` }} />
+                  <span style={{ fontSize: '0.65rem', color: G.dim, letterSpacing: '0.1em' }}>{title}</span>
                 </div>
-              ))}
-            </div>
+                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.4 }}>{text}</p>
+              </div>
+            ))}
           </motion.div>
         </div>
 
@@ -253,6 +284,22 @@ function ResultsScreen({ tokens, breakdown, roundNumber }: {
 interface Breakdown { base: number; accuracy: number; speed: number; bonus: number; completed: boolean }
 
 export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: string }) {
+  // Parse trace si viene en JSON
+  let tBefore = ''
+  let tHighlight = round.technical_content || ''
+  let tAfter = ''
+
+  try {
+    if (round.technical_content) {
+      const parsed = JSON.parse(round.technical_content)
+      if (parsed && parsed.trace_highlight) {
+        tBefore = parsed.trace_before || ''
+        tHighlight = parsed.trace_highlight || ''
+        tAfter = parsed.trace_after || ''
+      }
+    }
+  } catch { /* legacy */ }
+
   const [phase, setPhase] = useState<'intro' | 'playing' | 'results'>('intro')
   const [typedText, setTypedText] = useState('')
   const [submitted, setSubmitted] = useState(false)
@@ -385,15 +432,30 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
                 {round.output_type === 'react' ? 'agent_trace.log' : 'tool_call.json'}
               </span>
             </div>
-            <div className="p-4" style={{ background: G.bg, maxHeight: 240, overflow: 'auto' }}>
-              <DecryptedText
-                text={round.technical_content}
-                animateOn="view"
-                revealDirection="start"
-                sequential
-                speed={40}
-                className="text-xs text-gray-200 font-mono"
-              />
+            <div className="p-4 flex flex-col gap-3" style={{ background: G.bg, maxHeight: 240, overflow: 'auto' }}>
+              {tBefore && (
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.75rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                  {tBefore}
+                </div>
+              )}
+              
+              <div style={{ background: 'rgba(250,204,21,0.06)', borderLeft: `3px solid ${G.primary}`, padding: '8px 12px', borderRadius: '0 4px 4px 0' }}>
+                <DecryptedText
+                  text={tHighlight}
+                  animateOn="view"
+                  revealDirection="start"
+                  sequential
+                  speed={40}
+                  className="text-xs font-mono"
+                  style={{ color: '#fff', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}
+                />
+              </div>
+
+              {tAfter && (
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.75rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                  {tAfter}
+                </div>
+              )}
             </div>
           </div>
 
@@ -447,7 +509,7 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
           >
             <div className="px-4 pt-3 pb-1">
               <p className="text-xs uppercase tracking-widest" style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold-dark)' }}>
-                Transcribe el parrafo
+                Documenta la acción resaltada:
               </p>
             </div>
 

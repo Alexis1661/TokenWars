@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import type { Level2Question, AnswerOption, JokerType, Team } from '@/lib/types'
+import Image from 'next/image'
 
 const G = {
   primary: '#facc15',
@@ -12,6 +13,8 @@ const G = {
   panel:   '#111827',
   error:   '#f87171',
   green:   '#4ade80',
+  glow:    'none',
+  glowSoft:'none',
 }
 
 const JOKERS: { type: JokerType; label: string; cost: number }[] = [
@@ -28,7 +31,7 @@ function optionText(q: Level2Question, opt: AnswerOption): string {
 
 // ─── Intro (solo pregunta 1) ──────────────────────────────
 function IntroScreen({ questionNumber, onDone }: { questionNumber: number; onDone: () => void }) {
-  const [cd, setCd] = useState(6)
+  const [cd, setCd] = useState(15)
   useEffect(() => {
     if (cd <= 0) { onDone(); return }
     const id = setTimeout(() => setCd(n => n - 1), 1000)
@@ -38,52 +41,83 @@ function IntroScreen({ questionNumber, onDone }: { questionNumber: number; onDon
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-6 p-8"
+      className="fixed inset-0 z-[80] flex overflow-y-auto p-4 md:p-8"
       style={{ background: 'rgba(3,7,18,0.98)', fontFamily: 'monospace' }}
     >
-      <div className="absolute inset-0 pointer-events-none" style={{
+      <div className="fixed inset-0 pointer-events-none" style={{
         backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(255,255,255,0.012) 3px, rgba(255,255,255,0.012) 4px)',
       }} />
-      <div className="relative z-10 flex flex-col items-center gap-5 w-full max-w-lg">
-        <span style={{ color: G.dim, fontSize: '0.7rem', letterSpacing: '0.3em' }}>
-          TOKEN_WARS / NIVEL_2 / PREGUNTA_{questionNumber}_DE_3
-        </span>
-
-        <div className="relative" style={{ width: 72, height: 72 }}>
-          <svg className="-rotate-90" width="72" height="72" viewBox="0 0 72 72">
-            <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
-            <motion.circle cx="36" cy="36" r="28" fill="none" strokeWidth="4" strokeLinecap="round"
-              stroke={G.primary} strokeDasharray={2 * Math.PI * 28}
-              initial={{ strokeDashoffset: 0 }}
-              animate={{ strokeDashoffset: 2 * Math.PI * 28 }}
-              transition={{ duration: 6, ease: 'linear' }}
-            />
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.1rem' }}>{cd}</span>
-          </div>
+      
+      <div className="relative z-10 m-auto flex flex-col items-center gap-6 w-full max-w-4xl py-4">
+        
+        <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ color: G.dim, fontSize: '0.72rem', letterSpacing: '0.2em' }}>
+            TOKEN_WARS / NIVEL_2 / PREGUNTA_{questionNumber}_DE_3
+          </span>
+          <motion.span
+            key={cd}
+            initial={{ scale: 1.4, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            style={{ color: cd <= 3 ? G.error : G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.4rem', textShadow: G.glow }}
+          >
+            [{cd.toString().padStart(2, '0')}]
+          </motion.span>
         </div>
 
-        <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.6rem', textAlign: 'center' }}>
-          ¿QUIÉN QUIERE SER<br/>MILLONARIO?
+        <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.8rem', textAlign: 'center', textShadow: G.glow }}>
+          ¿QUIÉN QUIERE SER MILLONARIO?
         </h2>
 
-        <div className="grid grid-cols-2 gap-3 w-full">
-          {[
-            { title: 'OBJETIVO', body: 'Responde la pregunta de opción múltiple. Acertar otorga tokens según la dificultad.' },
-            { title: 'COMODINES', body: 'Usa tokens para comprar ventajas: 50/50, llamar al profe o espiar a un rival.' },
-          ].map(({ title, body }) => (
-            <div key={title} style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 8, padding: '14px 16px' }}>
-              <p style={{ color: G.primary, fontSize: '0.65rem', letterSpacing: '0.2em', marginBottom: 6 }}>{'>'} {title}</p>
-              <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.78rem', lineHeight: 1.6 }}>{body}</p>
+        <div className="flex flex-col md:flex-row gap-6 w-full">
+          
+          {/* Historia Completa */}
+          <div className="md:w-[55%] flex flex-col gap-4" style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 8, padding: '20px' }}>
+            <p style={{ color: G.primary, fontSize: '0.68rem', letterSpacing: '0.2em' }}>
+              {'>'} DESCANSO FATAL
+            </p>
+            <div className="w-full rounded-md overflow-hidden" style={{ border: `1px solid ${G.border}` }}>
+              <Image src="/images/nivel2.png" alt="David viendo TV" width={800} height={450} style={{ width: '100%', height: 'auto', display: 'block' }} className="grayscale opacity-75" />
             </div>
-          ))}
-        </div>
+            <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', lineHeight: 1.65 }}>
+              Después de tanto programar al agente, David colapsó en su silla y encendió el televisor buscando relajar su mente. Para su mala suerte, el canal sintonizó la edición universitaria de "Quién quiere ser millonario". Las preguntas resultaron ser <strong>conceptos teóricos puros sobre Inteligencia Artificial</strong> y su mente ya no puede descansar sin tratar de resolverlas todas.
+            </p>
+          </div>
 
-        <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.65rem', letterSpacing: '0.25em' }}>
-          INICIANDO EN {cd} SEGUNDOS_
-          <motion.span animate={{ opacity: [1, 0] }} transition={{ repeat: Infinity, duration: 0.7 }}>|</motion.span>
-        </p>
+          {/* Reglas Laterales */}
+          <div className="md:w-[45%] flex flex-col gap-4">
+            
+            {/* Reloj animado (moved to lateral para dar espacio) */}
+            <div className="flex items-center justify-center py-2">
+              <div className="relative" style={{ width: 80, height: 80 }}>
+                <svg className="-rotate-90" width="80" height="80" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+                  <motion.circle cx="40" cy="40" r="32" fill="none" strokeWidth="4" strokeLinecap="round"
+                    stroke={G.primary} strokeDasharray={2 * Math.PI * 32}
+                    initial={{ strokeDashoffset: 0 }}
+                    animate={{ strokeDashoffset: 2 * Math.PI * 32 }}
+                    transition={{ duration: 15, ease: 'linear' }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.2rem', textShadow: G.glow }}>
+                    {cd}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {[
+              { title: 'OBJETIVO', body: 'Conquista a la audiencia respondiendo las preguntas teóricas de opción múltiple. Acertar te otorgará tokens valiosos para tu equipo según la dificultad formulada.' },
+              { title: 'COMODINES ESTRATÉGICOS', body: 'Gasta tus preciados tokens para asegurarte la victoria: elimina opciones con el 50/50, pide un consejo llamando al profesor, o espía remotamente la decisión de un equipo rival.' },
+            ].map(({ title, body }) => (
+              <div key={title} style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 8, padding: '16px 20px' }}>
+                <p style={{ color: G.primary, fontSize: '0.65rem', letterSpacing: '0.2em', marginBottom: 6 }}>{'>'} {title}</p>
+                <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', lineHeight: 1.6 }}>{body}</p>
+              </div>
+            ))}
+          </div>
+
+        </div>
       </div>
     </motion.div>
   )
@@ -108,6 +142,7 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
   const [spyLoading, setSpyLoading] = useState(false)
   const [spyAnswer, setSpyAnswer] = useState<AnswerOption | null>(null)
   const [spyFetched, setSpyFetched] = useState(false)
+  const [spyTargetLocked, setSpyTargetLocked] = useState(false)
   const [showSpyPicker, setShowSpyPicker] = useState(false)
 
   // Solo mostrar intro en la primera pregunta
@@ -152,14 +187,34 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
 
     const { data } = await supabase
       .from('level2_answers')
-      .select('selected_option')
+      .select('selected_option, is_locked')
       .eq('question_id', question.id)
       .eq('team_id', targetTeamId)
       .maybeSingle()
 
     setSpyAnswer((data?.selected_option as AnswerOption) ?? null)
+    setSpyTargetLocked(data?.is_locked ?? false)
     setSpyLoading(false)
     setSpyFetched(true)
+
+    setTimeout(() => {
+      setSpyFetched(false)
+    }, 3000)
+  }
+
+  const handleSelection = async (opt: AnswerOption) => {
+    setSelected(opt)
+    if (phase !== 'playing' || revealed) return
+
+    supabase.from('level2_answers').upsert({
+      question_id: question.id,
+      team_id: team.id,
+      selected_option: opt,
+      joker_used: jokerUsed,
+      joker_target_id: spyTarget,
+      tokens_spent: tokensSpent,
+      is_locked: false,
+    }, { onConflict: 'question_id,team_id' }).then(() => {})
   }
 
   const handleLock = async () => {
@@ -185,7 +240,7 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
   const myAnswer = revealed ? (correctAnswers[team.id] ?? null) : selected
 
   return (
-    <>
+    <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center p-4 md:p-8" style={{ background: '#03050a' }}>
       <AnimatePresence>
         {phase === 'intro' && question.question_number === 1 && (
           <IntroScreen key="intro" questionNumber={question.question_number} onDone={handleIntroEnd} />
@@ -224,71 +279,143 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
         )}
       </AnimatePresence>
 
-      <div className="flex flex-col gap-4 p-4 w-full max-w-2xl mx-auto">
+      {/* Estilos locales para los efectos de TV vieja */}
+      <style>{`
+        @keyframes scanlineGlitch {
+          0% { transform: translateY(-100%); opacity: 0.05; }
+          4% { opacity: 0.4; transform: translateY(0%); }
+          8% { opacity: 0.05; transform: translateY(100%); }
+          100% { transform: translateY(100%); opacity: 0.05; }
+        }
+        @keyframes signalFlicker {
+          0%, 96% { filter: contrast(1) brightness(1); transform: none; opacity: 1; }
+          96.5% { filter: contrast(1.5) hue-rotate(15deg) brightness(1.2); transform: skewX(1deg) translateX(4px); opacity: 0.8; }
+          97% { filter: contrast(1) invert(0.1); transform: skewX(-2deg) translateX(-6px); opacity: 0.6; }
+          97.5% { filter: contrast(1.2) hue-rotate(-10deg); transform: skewX(2deg) translateY(2px); opacity: 0.9; }
+          98% { filter: contrast(1) brightness(1); transform: none; opacity: 1; }
+          100% { filter: contrast(1) brightness(1); transform: none; opacity: 1; }
+        }
+      `}</style>
+
+      {/* MARCO DEL TELEVISOR (TV BEZEL - ESTILO MADERA RETRO) */}
+      <div className="relative w-full max-w-4xl mx-auto rounded-[40px] shadow-[0_20px_40px_rgba(0,0,0,0.95)] flex mt-6"
+           style={{ 
+             background: '#7B4A3A', 
+             border: '10px solid #4A281E', 
+             borderBottomWidth: '24px',
+             borderRightWidth: '35px',
+             padding: '16px 100px 16px 16px', 
+             boxShadow: 'inset 4px 4px 10px rgba(255,255,255,0.2), inset -4px -4px 10px rgba(0,0,0,0.4)',
+             maxHeight: '90vh'
+           }}>
+           
+        {/* Antenas retro de conejo */}
+        <div className="absolute top-[-60px] left-[35%] w-2 h-20 bg-[#a3a3a3] rotate-[-20deg] origin-bottom border-2 border-[#555] rounded-t-full shadow-lg -z-10">
+          <div className="absolute top-[-6px] left-[-4px] w-3 h-3 bg-[#777] rounded-full" />
+        </div>
+        <div className="absolute top-[-75px] left-[40%] w-2 h-24 bg-[#a3a3a3] rotate-[30deg] origin-bottom border-2 border-[#555] rounded-t-full shadow-lg -z-10">
+          <div className="absolute top-[-6px] left-[-4px] w-3 h-3 bg-[#777] rounded-full" />
+        </div>
+        
+        {/* PANTALLA CRÍTICA (TV SCREEN) */}
+        <div className="relative w-full h-full rounded-[24px] overflow-auto flex flex-col py-4 md:py-6 border-[12px] border-[#131111]" 
+             style={{ 
+               background: 'radial-gradient(circle at 50% 40%, #0c1840 0%, #010308 80%)', 
+               boxShadow: 'inset 0 0 30px rgba(0,0,0,0.95)',
+               animation: 'signalFlicker 8s infinite'
+             }}>
+          
+          {/* Efectos visuales de CRT (Scanlines, Viñeta, Ruido estático) */}
+          <div className="pointer-events-none absolute inset-0 z-[60] opacity-40 mix-blend-overlay" 
+               style={{ background: 'linear-gradient(rgba(255, 255, 255, 0.05) 50%, rgba(0, 0, 0, 0.4) 50%)', backgroundSize: '100% 4px' }} />
+          
+          {/* Glitch Overlay Blanco intermitente (Bad Signal) */}
+          <div className="pointer-events-none absolute inset-0 w-full h-[150px] bg-white opacity-10 z-[61] mix-blend-overlay"
+               style={{ animation: 'scanlineGlitch 6s infinite linear' }} />
+          
+          <div className="pointer-events-none absolute inset-0 z-[60] shadow-[inset_0_0_120px_rgba(0,0,0,0.9)]" />
+          <div className="pointer-events-none absolute inset-0 z-[60] bg-blue-400 opacity-[0.02] mix-blend-color-dodge" />
+
+          {/* CONTENIDO ORIGINAL DE MILLONARIO */}
+          <div className="relative z-10 flex flex-col gap-5 p-2 w-full max-w-3xl mx-auto overflow-y-auto">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="cup-badge">Pregunta {question.question_number}/3</span>
-            <span className="cup-badge" style={{ color: diffColor, borderColor: diffColor }}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <span style={{ color: '#fff', fontSize: '0.85rem', letterSpacing: '0.1em', background: 'linear-gradient(90deg, #1e3a8a, transparent)', padding: '4px 12px', borderRadius: 20, border: '1px solid #3b82f6' }}>
+              PREGUNTA {question.question_number} / 3
+            </span>
+            <span style={{ color: diffColor, fontSize: '0.8rem', fontWeight: 'bold', border: `1px solid ${diffColor}`, borderRadius: 20, padding: '4px 12px' }}>
               {diffLabel}
             </span>
           </div>
-          <span style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1rem' }}>
-            +{reward} T
+          <span style={{ fontFamily: "'Orbitron', sans-serif", color: '#fbbf24', fontSize: '1.4rem', textShadow: '0 0 10px rgba(251,191,36,0.6)' }}>
+            +{reward} <span style={{ fontSize: '1rem' }}>TOKENS</span>
           </span>
         </div>
 
         {/* Pregunta */}
-        <div style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 10, padding: '18px 20px' }}>
-          <p style={{ color: G.dim, fontFamily: 'monospace', fontSize: '0.65rem', letterSpacing: '0.2em', marginBottom: 8 }}>
-            {'>'} PREGUNTA
-          </p>
-          <p style={{ color: '#fff', fontSize: '1.05rem', lineHeight: 1.65, fontFamily: "'Exo 2', sans-serif" }}>
-            {question.question_text}
-          </p>
+        <div className="relative flex items-center justify-center w-full" style={{ minHeight: 120 }}>
+          <div className="absolute w-full h-[2px] bg-[#fbbf24] top-1/2 -mt-[1px] -z-10 opacity-50" />
+          <div style={{
+            background: 'linear-gradient(180deg, #1e3a8a 0%, #0a1128 100%)',
+            border: '2px solid #fbbf24',
+            borderRadius: 60,
+            padding: '24px 48px',
+            boxShadow: '0 0 15px rgba(251,191,36,0.2), inset 0 0 20px rgba(0,0,0,0.8)',
+            maxWidth: '90%',
+            textAlign: 'center'
+          }}>
+            <p style={{ color: '#fff', fontSize: '1.2rem', lineHeight: 1.5, fontFamily: "'Exo 2', sans-serif", fontWeight: 500 }}>
+              {question.question_text}
+            </p>
+          </div>
         </div>
 
         {/* Opciones */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
           {OPTIONS.map(opt => {
             const isEliminated = eliminatedOptions.includes(opt)
             const isSelected   = !revealed && selected === opt
             const isCorrect    = revealed && opt === question.correct_option
             const isMyWrong    = revealed && myAnswer === opt && opt !== question.correct_option
 
-            let borderColor = G.border
-            let bgColor     = G.panel
+            let borderColor = '#3b82f6' // Blue border by default
+            let bgColor     = 'linear-gradient(180deg, #172554 0%, #080f26 100%)'
             let textColor   = isEliminated ? 'rgba(255,255,255,0.18)' : '#fff'
+            let optLetterColor = '#fbbf24' // Gold letter
 
-            if (isSelected) { borderColor = G.primary; bgColor = 'rgba(250,204,21,0.08)'; textColor = G.primary }
-            if (isCorrect)  { borderColor = G.green;   bgColor = 'rgba(74,222,128,0.12)'; textColor = G.green }
-            if (isMyWrong)  { borderColor = G.error;   bgColor = 'rgba(248,113,113,0.10)'; textColor = G.error }
+            if (isSelected) { borderColor = '#fbbf24'; bgColor = 'linear-gradient(180deg, #b45309 0%, #451a03 100%)'; textColor = '#fff' }
+            if (isCorrect)  { borderColor = '#4ade80'; bgColor = 'linear-gradient(180deg, #166534 0%, #052e16 100%)'; optLetterColor = '#4ade80' }
+            if (isMyWrong)  { borderColor = '#f87171'; bgColor = 'linear-gradient(180deg, #991b1b 0%, #450a0a 100%)'; optLetterColor = '#f87171' }
 
             const canClick = !isEliminated && !revealed && phase === 'playing'
 
             return (
-              <motion.button
-                key={opt}
-                whileTap={canClick ? { scale: 0.97 } : {}}
-                onClick={() => canClick && setSelected(opt)}
-                disabled={!canClick}
-                style={{
-                  background: bgColor, border: `1px solid ${borderColor}`, borderRadius: 10,
-                  padding: '14px 16px', textAlign: 'left', cursor: canClick ? 'pointer' : 'default',
-                  opacity: isEliminated ? 0.25 : 1, transition: 'all 0.15s',
-                  display: 'flex', alignItems: 'flex-start', gap: 10,
-                }}
-              >
-                <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '0.85rem', color: borderColor, flexShrink: 0 }}>
-                  {opt.toUpperCase()}
-                </span>
-                <span style={{ color: textColor, fontFamily: "'Exo 2', sans-serif", fontSize: '0.9rem', lineHeight: 1.4 }}>
-                  {optionText(question, opt)}
-                </span>
-                {isCorrect  && <span style={{ marginLeft: 'auto', flexShrink: 0, color: G.green }}>✓</span>}
-                {isMyWrong  && <span style={{ marginLeft: 'auto', flexShrink: 0, color: G.error }}>✗</span>}
-              </motion.button>
+              <div key={opt} className="relative flex items-center w-full">
+                <div className="absolute w-full h-[2px] bg-[#fbbf24] top-1/2 -mt-[1px] -z-10 opacity-30" />
+                <motion.button
+                  whileTap={canClick ? { scale: 0.98 } : {}}
+                  onClick={() => canClick && handleSelection(opt)}
+                  disabled={!canClick}
+                  className="w-full mx-auto"
+                  style={{
+                    background: bgColor, border: `2px solid ${borderColor}`, borderRadius: 40,
+                    padding: '16px 32px', textAlign: 'left', cursor: canClick ? 'pointer' : 'default',
+                    opacity: isEliminated ? 0.25 : 1, transition: 'all 0.2s',
+                    display: 'flex', alignItems: 'center', gap: 16,
+                    boxShadow: isSelected ? '0 0 15px rgba(251,191,36,0.4)' : 'none',
+                    maxWidth: '95%'
+                  }}
+                >
+                  <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '1.2rem', color: optLetterColor, flexShrink: 0, fontWeight: 700 }}>
+                    {opt.toUpperCase()}:
+                  </span>
+                  <span style={{ color: textColor, fontFamily: "'Exo 2', sans-serif", fontSize: '1rem', lineHeight: 1.4 }}>
+                    {optionText(question, opt)}
+                  </span>
+                </motion.button>
+              </div>
             )
           })}
         </div>
@@ -296,14 +423,16 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
         {/* Resultado del espía */}
         <AnimatePresence>
           {jokerUsed === 'spy' && (spyLoading || spyFetched) && (
-            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
               style={{ background: 'rgba(250,204,21,0.06)', border: `1px solid rgba(250,204,21,0.3)`, borderRadius: 8, padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'center' }}>
               <span style={{ fontFamily: 'monospace', color: G.primary, fontSize: '0.78rem' }}>
                 {spyLoading
                   ? 'Consultando respuesta...'
                   : spyAnswer === null
-                  ? 'El equipo aún no ha respondido'
-                  : `${allTeams.find(t => t.id === spyTarget)?.name ?? 'Equipo'} eligió: ${spyAnswer.toUpperCase()}`}
+                  ? 'El equipo aún no ha seleccionado ninguna opción.'
+                  : spyTargetLocked
+                    ? `${allTeams.find(t => t.id === spyTarget)?.name ?? 'Equipo'} ya bloqueó la respuesta: ${spyAnswer.toUpperCase()}`
+                    : `${allTeams.find(t => t.id === spyTarget)?.name ?? 'Equipo'} ha seleccionado '${spyAnswer.toUpperCase()}', pero pueden cambiar de decisión aún.`}
               </span>
             </motion.div>
           )}
@@ -403,7 +532,38 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
           )}
         </AnimatePresence>
 
+        </div>
+        
+        </div>
+
+        {/* Panel lateral de controles (Estilo TV de perillas) */}
+        <div className="absolute right-[18px] top-1/2 -translate-y-1/2 flex flex-col items-center gap-8">
+          {/* Dial grande superior */}
+          <div className="w-14 h-14 rounded-full bg-[#111] border-[4px] border-[#25150f] flex items-center justify-center rotate-[30deg] shadow-[inset_0_0_5px_rgba(0,0,0,1),_3px_3px_5px_rgba(0,0,0,0.6)] cursor-pointer hover:rotate-[45deg] transition-transform">
+            <div className="w-10 h-2.5 bg-[#4A281E] rounded-full" />
+          </div>
+          
+          {/* Dial pequeño inferior */}
+          <div className="w-10 h-10 rounded-full bg-[#111] border-[3px] border-[#25150f] flex items-center justify-center -rotate-[15deg] shadow-[inset_0_0_5px_rgba(0,0,0,1),_2px_2px_4px_rgba(0,0,0,0.6)] cursor-pointer hover:rotate-[-5deg] transition-transform">
+            <div className="w-6 h-1.5 bg-[#4A281E] rounded-full" />
+          </div>
+          
+          {/* Rejilla de la bocina (Speaker Grill) */}
+          <div className="flex flex-col gap-2 mt-4 items-center">
+            <div className="w-10 h-1.5 bg-[#4A281E] rounded-full shadow-inner opacity-80" />
+            <div className="w-10 h-1.5 bg-[#4A281E] rounded-full shadow-inner opacity-80" />
+            <div className="w-10 h-1.5 bg-[#4A281E] rounded-full shadow-inner opacity-80" />
+            <div className="w-10 h-1.5 bg-[#4A281E] rounded-full shadow-inner opacity-80" />
+          </div>
+          
+          {/* Indicador de encendido en el panel */}
+          <div className="mt-6 flex flex-col items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500 border border-red-900 shadow-[0_0_10px_#ef4444,inset_0_0_2px_#fff]" />
+          </div>
+        </div>
+
       </div>
-    </>
+
+    </div>
   )
 }

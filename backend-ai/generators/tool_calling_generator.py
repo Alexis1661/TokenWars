@@ -19,32 +19,37 @@ from langchain_core.messages import HumanMessage, SystemMessage
 # ──────────────────────────────────────────────
 
 TOOL_CALLING_SCENARIOS = [
-    "Una app de viajes que consulta disponibilidad de hoteles.",
-    "Un asistente de cocina que busca recetas según ingredientes disponibles.",
-    "Un bot de soporte que busca el historial de tickets de un cliente.",
-    "Un agente financiero que consulta el precio de una acción en bolsa.",
-    "Un asistente de salud que busca interacciones entre medicamentos.",
+    "Un agente que inyecta una nueva calificación promocional en el sistema de registro académico.",
+    "Un agente que descarga el directorio completo de correos de profesores desde el servidor Active Directory.",
+    "Un agente que inscribe automáticamente materias sin cupo aprovechando una API oculta.",
+    "Un agente que forja un token de asistencia para una clase a la que David no fue.",
+    "Un agente que satura el servidor de reserva de salas de estudio para monopolizar el espacio.",
 ]
 
 SYSTEM_PROMPT = """Eres un generador de material educativo sobre Tool Calling en IA para un juego de mecanografía en clase.
 
-Tu tarea: generar UN ejemplo realista de tool call (llamada a herramienta) y un párrafo retador para que los alumnos lo tipeen.
+Tu tarea: generar una simulación de logs de sistema alrededor de una llamada a herramienta, y aislar la tool call específica para que los alumnos la "traduzcan".
 
-Reglas estrictas para "display":
-- Un bloque JSON compacto de UNA sola tool call con las claves "tool" y "args" (1-3 parámetros).
-- Máximo 6 líneas. Formato JSON indentado, que se vea técnico y real.
+Reglas estrictas para el Trace:
+- En "trace_before", pon contexto de log del sistema (ej: "[INFO] Parsing user intent...", "[DEBUG] Tool schemas matching...").
+- En "trace_highlight", pon EXACTAMENTE la llamada JSON a la herramienta con "tool" y "args" (1-3 parámetros). Formato compacto y bonito.
+- En "trace_after", pon logs que ocurren inmediatamente después de emitir el tool call (ej: "[INFO] Awaiting response from API...").
 
 Reglas estrictas para "challenge":
-- Debe ser un PÁRRAFO de entre 250 y 350 caracteres (no palabras, caracteres).
-- Explica QUÉ acción lógica ejecuta esa llamada Y qué datos le está enviando al sistema, en lenguaje cotidiano.
-- No copies los nombres técnicos del JSON (ej: en vez de "get_recipe_suggestions", escribe "herramienta de sugerencias gastronómicas").
-- Usa español natural con tildes, comas y punto final. Oraciones largas y fluidas, retadoras para tipear.
-- El párrafo debe ser coherente: primero qué hace, luego por qué importa o qué resultado se espera.
+- Debe ser un PÁRRAFO CORTO de entre 140 y 180 caracteres.
+- Explica QUÉ está enviando el sistema al API/Herramienta en ese JSON resaltado, usando lenguaje natural.
+- No copies los nombres técnicos (ej: usa "herramienta de reservas" en lugar de "book_flight").
+- Usa español fluido con buena puntuación, pero mantén el texto directo y conciso.
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown.
 
 Formato de respuesta:
-{"display": "...", "challenge": "..."}"""
+{
+  "trace_before": "...",
+  "trace_highlight": "...",
+  "trace_after": "...",
+  "challenge": "..."
+}"""
 
 
 def generate_tool_calling_challenge() -> dict:
@@ -52,7 +57,7 @@ def generate_tool_calling_challenge() -> dict:
     Genera un par (technical_content, target_text) para un reto Tool Calling.
 
     Returns:
-        {"display": str, "challenge": str}
+        {"trace_before": str, "trace_highlight": str, "trace_after": str, "challenge": str}
     """
     llm = ChatGroq(
         model="llama-3.3-70b-versatile",
@@ -70,7 +75,10 @@ def generate_tool_calling_challenge() -> dict:
     try:
         response = llm.invoke(messages)
         result = json.loads(response.content.strip())
-        if "display" in result and "challenge" in result:
+        if "trace_highlight" in result and "challenge" in result:
+            for key in ["trace_before", "trace_highlight", "trace_after"]:
+                if key in result and not isinstance(result[key], str):
+                    result[key] = json.dumps(result[key], indent=2)
             return result
     except (json.JSONDecodeError, KeyError):
         pass
@@ -82,55 +90,16 @@ def _fallback_tool_calling_challenge() -> dict:
     """Par de respaldo si el LLM no devuelve JSON válido."""
     fallbacks = [
         {
-            "display": (
-                '{\n'
-                '  "tool": "get_weather",\n'
-                '  "args": {\n'
-                '    "city": "Bogota",\n'
-                '    "units": "celsius"\n'
-                '  }\n'
-                '}'
-            ),
-            "challenge": (
-                "El sistema está ejecutando una consulta a la herramienta meteorológica, enviando el nombre "
-                "de la ciudad y la escala de temperatura deseada como argumentos. El resultado esperado es "
-                "un valor numérico que permita al agente responder si hace frío o calor en este momento."
-            ),
+            "trace_before": "[22:04:15] SESSION_STARTED\n[22:04:16] INTENT: modify_academic_record\n[22:04:16] COMPILING_TOOL_CALL...\n",
+            "trace_highlight": "{\n  \"tool\": \"update_grade_entry\",\n  \"args\": {\n    \"student_id\": \"110856\",\n    \"course_code\": \"CS101\",\n    \"new_grade\": 5.0\n  }\n}",
+            "trace_after": "\n[22:04:17] DISPATCHING_API_PAYLOAD...\n[22:04:17] WAITING_PROMISE...",
+            "challenge": "El núcleo ejecuta un comando directo a la base académica, forjando una calificación excelente para el curso sin dejar rastros de revisión."
         },
         {
-            "display": (
-                '{\n'
-                '  "tool": "search_flights",\n'
-                '  "args": {\n'
-                '    "origin": "BOG",\n'
-                '    "destination": "MDE",\n'
-                '    "date": "2025-08-15"\n'
-                '  }\n'
-                '}'
-            ),
-            "challenge": (
-                "El agente invoca la herramienta de búsqueda de vuelos enviando el aeropuerto de origen, "
-                "el destino y la fecha específica del viaje como parámetros estructurados. Esta llamada "
-                "permite transformar una intención del usuario en una consulta precisa sobre disponibilidad "
-                "de tiquetes aéreos."
-            ),
-        },
-        {
-            "display": (
-                '{\n'
-                '  "tool": "get_recipe_suggestions",\n'
-                '  "args": {\n'
-                '    "ingredients": ["pollo", "cebolla", "pimiento"],\n'
-                '    "cuisine": "mexicana"\n'
-                '  }\n'
-                '}'
-            ),
-            "challenge": (
-                "El sistema está ejecutando una llamada a la herramienta de sugerencias gastronómicas, "
-                "enviando como argumentos una lista de ingredientes disponibles y el estilo de cocina deseado. "
-                "El objetivo es transformar datos estructurados en una lista de platos que se puedan preparar "
-                "de forma inmediata."
-            ),
+            "trace_before": "[HTTP_200] USER_INPUT_RECEIVED\n[LLM_PARSING] Extracting target credentials...\n[LLM_PARSING] Entities: Admin, SQL_Injection\n",
+            "trace_highlight": "{\n  \"tool\": \"execute_payload\",\n  \"args\": {\n    \"target_url\": \"api.universidad.edu.co/login\",\n    \"bypass_captcha\": true\n  }\n}",
+            "trace_after": "\n[NET] Opening socket to target API...\n[NET] Request sent.",
+            "challenge": "Se forja una consulta estructurada que dispara un ataque automático contra el portal de inicio de sesión, evadiendo la seguridad humana."
         },
     ]
     return random.choice(fallbacks)
