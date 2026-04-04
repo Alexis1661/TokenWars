@@ -21,13 +21,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error?.message ?? 'Error al crear sesión' }, { status: 500 })
   }
 
-  // 2. Disparar el seed en background (no bloqueamos la respuesta al host)
-  const baseUrl = req.nextUrl.origin
-  fetch(`${baseUrl}/api/seed-session`, {
+  // 2. Disparar el seed en background usando el backend Python (LangChain)
+  //    Si no está corriendo, cae al seed interno de Next.js como fallback
+  const pythonBackendUrl = process.env.AI_BACKEND_URL ?? 'http://localhost:8000'
+
+  fetch(`${pythonBackendUrl}/seed`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId: data.id }),
-  }).catch((err) => console.error('[seed-session] Error:', err))
+  }).catch(() => {
+    // Fallback: Python backend no disponible → usar la API interna de Next.js
+    console.warn('[seed] Python backend no disponible, usando fallback interno...')
+    const baseUrl = req.nextUrl.origin
+    fetch(`${baseUrl}/api/seed-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: data.id }),
+    }).catch((err) => console.error('[seed-session fallback] Error:', err))
+  })
 
   // 3. Responder inmediatamente con los datos de la sesión
   return NextResponse.json(data)

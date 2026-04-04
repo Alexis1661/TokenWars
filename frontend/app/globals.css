@@ -195,3 +195,52 @@ h1, h2, h3 {
 }
 
 .animate-float { animation: float 3s ease-in-out infinite; }
+
+/* ── Film grain overlay (Cuphead ambient) ── */
+.film-grain-overlay {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 9997;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 180px 180px;
+  animation: grain-shift 0.12s steps(1) infinite;
+}
+
+@keyframes grain-shift {
+  0%   { transform: translate(0, 0); }
+  20%  { transform: translate(-2px, 1px); }
+  40%  { transform: translate(1px, -2px); }
+  60%  { transform: translate(2px, 1px); }
+  80%  { transform: translate(-1px, -1px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* ── Click spark ── */
+.click-spark {
+  pointer-events: none;
+  position: fixed;
+  z-index: 9999;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: spark-burst 0.4s ease-out forwards;
+  background: radial-gradient(circle, #facc15 0%, transparent 70%);
+}
+@keyframes spark-burst {
+  0%   { transform: translate(-50%, -50%) scale(0.2); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+}
+
+/* ── Token shiny override ── */
+.token-shiny {
+  background: linear-gradient(110deg, #facc15 0%, #fef08a 30%, #facc15 50%, #eab308 70%, #facc15 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shiny-sweep 2.5s linear infinite;
+}
+

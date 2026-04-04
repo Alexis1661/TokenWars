@@ -4,22 +4,23 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { Timer } from '@/components/ui/Timer'
 import { Keyboard } from '@/components/ui/Keyboard'
+import { GlitchText } from '@/components/ui/GlitchText'
 import type { Level1Round } from '@/lib/types'
 
 const ROUND_SECONDS = 45
 const INTRO_SECONDS = 15
 
-// ── Paleta Matrix green ──
+// ── Paleta Dashboard (black / white / yellow) ──
 const G = {
-  primary:  '#00ff41',
-  dim:      '#00cc33',
-  dark:     '#003a0d',
-  glow:     '0 0 12px rgba(0,255,65,0.7), 0 0 30px rgba(0,255,65,0.25)',
-  glowSoft: '0 0 8px rgba(0,255,65,0.3)',
-  border:   'rgba(0,255,65,0.3)',
-  bg:       '#020d04',
-  panel:    '#050f07',
-  error:    '#ff3355',
+  primary:  '#facc15',   // yellow-400
+  dim:      '#a3a3a3',   // neutral-400
+  dark:     '#111827',   // gray-900
+  glow:     'none',
+  glowSoft: 'none',
+  border:   'rgba(255,255,255,0.1)',
+  bg:       '#030712',   // gray-950
+  panel:    '#111827',   // gray-900
+  error:    '#f87171',   // red-400
 }
 
 function countErrors(typed: string, target: string): number {
@@ -44,11 +45,11 @@ function IntroScreen({ round, onDone }: { round: Level1Round; onDone: () => void
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-40 flex flex-col items-center justify-center p-8 gap-6"
-      style={{ background: 'rgba(2,13,4,0.98)', fontFamily: 'monospace' }}
+      style={{ background: 'rgba(3,7,18,0.98)', fontFamily: 'monospace' }}
     >
-      {/* Scanline verde de fondo */}
+      {/* Subtle grid scanline */}
       <div className="absolute inset-0 pointer-events-none" style={{
-        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(0,255,65,0.015) 3px, rgba(0,255,65,0.015) 4px)',
+        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(255,255,255,0.012) 3px, rgba(255,255,255,0.012) 4px)',
         zIndex: 0,
       }} />
 
@@ -109,10 +110,10 @@ function IntroScreen({ round, onDone }: { round: Level1Round; onDone: () => void
             <p style={{ color: G.primary, fontSize: '0.68rem', letterSpacing: '0.2em' }}>
               {'>'} PANEL IZQUIERDO: SALIDA_DEL_AGENTE
             </p>
-            <p style={{ color: 'rgba(0,255,65,0.75)', fontSize: '0.8rem', lineHeight: 1.65 }}>
+            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', lineHeight: 1.65 }}>
               Veras el output generado por un agente de IA. Puede ser un registro de su razonamiento interno o una llamada a una herramienta externa. Leelo con atencion.
             </p>
-            <pre style={{ background: 'rgba(0,255,65,0.04)', border: `1px solid ${G.border}`, borderRadius: 4, padding: '8px 10px', fontSize: '0.68rem', color: G.dim, lineHeight: 1.6, margin: 0 }}>
+            <pre style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${G.border}`, borderRadius: 4, padding: '8px 10px', fontSize: '0.68rem', color: G.dim, lineHeight: 1.6, margin: 0 }}>
               {'Thought: ...\nAction: ...\nAction Input: ...\n---\n{ "name": "...", "args": {...} }'}
             </pre>
           </motion.div>
@@ -125,12 +126,12 @@ function IntroScreen({ round, onDone }: { round: Level1Round; onDone: () => void
             <p style={{ color: G.primary, fontSize: '0.68rem', letterSpacing: '0.2em' }}>
               {'>'} PANEL DERECHO: TU_MISION
             </p>
-            <p style={{ color: 'rgba(0,255,65,0.75)', fontSize: '0.8rem', lineHeight: 1.65 }}>
+            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', lineHeight: 1.65 }}>
               Transcribe el parrafo que aparece. Ese texto explica en lenguaje humano lo que hizo el agente. Escribe rapido y con precision.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
-                { dot: G.primary, text: `Caracter correcto → verde` },
+                { dot: G.primary, text: `Carácter correcto → blanco` },
                 { dot: G.error,   text: `Caracter incorrecto → rojo` },
                 { dot: G.primary, text: `+50T bonus: identifica el tipo al final` },
                 { dot: '#ffcc00', text: `${ROUND_SECONDS}s por ronda` },
@@ -144,7 +145,7 @@ function IntroScreen({ round, onDone }: { round: Level1Round; onDone: () => void
           </motion.div>
         </div>
 
-        <p style={{ color: 'rgba(0,255,65,0.3)', fontSize: '0.65rem', letterSpacing: '0.25em' }}>
+        <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.65rem', letterSpacing: '0.25em' }}>
           INICIANDO EN {countdown} SEGUNDOS — PREPARATE_
           <motion.span animate={{ opacity: [1, 0] }} transition={{ repeat: Infinity, duration: 0.7 }}>|</motion.span>
         </p>
@@ -178,10 +179,10 @@ function ResultsScreen({ tokens, breakdown, roundNumber }: {
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-6"
-      style={{ background: 'rgba(2,13,4,0.97)', fontFamily: 'monospace' }}
+      style={{ background: 'rgba(3,7,18,0.97)', fontFamily: 'monospace' }}
     >
       <div className="absolute inset-0 pointer-events-none" style={{
-        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(0,255,65,0.015) 3px, rgba(0,255,65,0.015) 4px)',
+        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(255,255,255,0.012) 3px, rgba(255,255,255,0.012) 4px)',
       }} />
 
       <div className="relative z-10 flex flex-col items-center gap-5 w-full max-w-sm px-6">
@@ -219,7 +220,7 @@ function ResultsScreen({ tokens, breakdown, roundNumber }: {
                 transition={{ delay: 0.4 + i * 0.1 }}
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               >
-                <span style={{ color: 'rgba(0,255,65,0.6)', fontSize: '0.78rem' }}>{label}</span>
+                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem' }}>{label}</span>
                 <span style={{ color: value > 0 ? G.primary : G.dim, fontSize: '0.85rem', textShadow: value > 0 ? G.glowSoft : 'none' }}>
                   +{value} T
                 </span>
@@ -239,7 +240,7 @@ function ResultsScreen({ tokens, breakdown, roundNumber }: {
         <motion.p
           key={countdown}
           initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          style={{ color: 'rgba(0,255,65,0.35)', fontSize: '0.68rem', letterSpacing: '0.2em' }}
+          style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.68rem', letterSpacing: '0.2em' }}
         >
           SIGUIENTE RONDA EN {countdown}...
         </motion.p>
@@ -362,10 +363,7 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
           {/* Header ronda */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="cup-badge">Ronda {round.round_number}/3</span>
-            <span className="cup-badge" style={{
-              background: round.output_type === 'react' ? 'rgba(124,58,237,0.25)' : 'rgba(168,85,247,0.15)',
-              borderColor: round.output_type === 'react' ? 'rgba(124,58,237,0.6)' : 'rgba(168,85,247,0.4)',
-            }}>
+            <span className="cup-badge">
               {round.output_type === 'react' ? 'ReAct' : 'Tool Calling'}
             </span>
           </div>
@@ -374,18 +372,21 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
           <div style={{ border: `1px solid ${G.border}`, borderRadius: 8, overflow: 'hidden', boxShadow: `0 4px 20px rgba(0,0,0,0.7), ${G.glowSoft}`, flex: 1 }}>
             <div className="flex items-center gap-2 px-3 py-2" style={{ background: G.bg, borderBottom: `1px solid ${G.border}` }}>
               <div className="flex gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'rgba(0,255,65,0.6)' }} />
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'rgba(0,255,65,0.35)' }} />
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'rgba(0,255,65,0.15)' }} />
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+                <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+                <span className="w-2.5 h-2.5 rounded-full bg-white/20" />
               </div>
               <span className="font-mono text-xs" style={{ color: G.dim, letterSpacing: '0.08em' }}>
                 {round.output_type === 'react' ? 'agent_trace.log' : 'tool_call.json'}
               </span>
             </div>
-            <pre className="font-mono text-xs p-4 whitespace-pre-wrap leading-relaxed select-none overflow-auto"
-              style={{ background: G.bg, color: G.primary, maxHeight: 240, textShadow: '0 0 6px rgba(0,255,65,0.4)' }}>
-              {round.technical_content}
-            </pre>
+            <div className="p-4" style={{ background: G.bg, maxHeight: 240, overflow: 'auto' }}>
+              <GlitchText
+                text={round.technical_content}
+                speed={60}
+                className="text-xs text-gray-200"
+              />
+            </div>
           </div>
 
           {/* Teclado */}
@@ -408,13 +409,12 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
                 startedAt={round.started_at ? new Date(round.started_at).getTime() : undefined}
               />
             )}
-            <div style={{ flex: 1, height: 6, background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.15)', borderRadius: 99, overflow: 'hidden' }}>
+            <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 99, overflow: 'hidden' }}>
               <motion.div
                 style={{
                   height: '100%',
-                  background: isComplete ? 'linear-gradient(90deg, #00aa2a, #00ff41)' : errorCount > 5 ? 'var(--cup-red)' : 'linear-gradient(90deg, #006620, #00ff41)',
+                  background: isComplete ? '#22c55e' : errorCount > 5 ? '#f87171' : '#facc15',
                   borderRadius: 99,
-                  boxShadow: G.glow,
                 }}
                 animate={{ width: `${pct * 100}%` }}
                 transition={{ duration: 0.1 }}
@@ -448,17 +448,17 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
               {target.split('').map((char, i) => {
                 const typed = typedText[i]
                 const isCursor = i === typedText.length
-                let color = 'rgba(0,255,65,0.25)'
+                let color = 'rgba(255,255,255,0.28)'
                 let bg = 'transparent'
                 if (typed !== undefined) {
-                  color = typed === char ? G.primary : G.error
-                  bg = typed !== char ? 'rgba(244,63,94,0.12)' : 'transparent'
+                  color = typed === char ? '#ffffff' : G.error
+                  bg = typed !== char ? 'rgba(248,113,113,0.12)' : 'transparent'
                 }
                 return (
-                  <span key={i} className="relative" style={{ color, background: bg, textShadow: typed === char ? '0 0 5px rgba(0,255,65,0.5)' : 'none' }}>
+                  <span key={i} className="relative" style={{ color, background: bg }}>
                     {isCursor && !submitted && (
                       <motion.span className="absolute -left-px top-1 bottom-0 w-0.5"
-                        style={{ background: G.primary, borderRadius: 2, boxShadow: G.glow }}
+                        style={{ background: G.primary, borderRadius: 2 }}
                         animate={{ opacity: [1, 0] }}
                         transition={{ repeat: Infinity, duration: 0.6 }}
                       />
@@ -488,9 +488,9 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
           {/* Stats */}
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: 'Progreso', value: `${Math.round(pct * 100)}%`, color: pct === 1 ? G.primary : 'rgba(0,255,65,0.5)' },
-              { label: 'Errores', value: String(errorCount), color: errorCount === 0 ? G.primary : G.error },
-              { label: 'Chars', value: `${typedText.length}/${target.length}`, color: 'rgba(232,224,248,0.5)' },
+              { label: 'Progreso', value: `${Math.round(pct * 100)}%`, color: pct === 1 ? G.primary : G.dim },
+              { label: 'Errores', value: String(errorCount), color: errorCount === 0 ? '#22c55e' : G.error },
+              { label: 'Chars', value: `${typedText.length}/${target.length}`, color: G.dim },
             ].map(({ label, value, color }) => (
               <div key={label} className="cup-panel text-center py-2 px-3">
                 <p className="text-xs" style={{ fontFamily: "'Orbitron', sans-serif", color: G.dim }}>{label}</p>
@@ -503,7 +503,7 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
           <AnimatePresence>
             {isComplete && !submitted && phase === 'playing' && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                style={{ background: G.panel, border: `1px solid ${G.primary}`, borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 10, boxShadow: G.glow }}>
+                style={{ background: G.panel, border: `1px solid ${G.primary}`, borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <p style={{ fontFamily: 'monospace', color: G.primary, textAlign: 'center', fontSize: '0.78rem', letterSpacing: '0.1em' }}>
                   {'>'} COMPLETADO — +50T BONUS: identifica el tipo de output
                 </p>
@@ -512,9 +512,8 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
                     <button key={type} onClick={() => setIdentified(type)}
                       className="cup-btn flex-1 py-2 text-sm"
                       style={{
-                        background: identified === type ? 'rgba(0,255,65,0.15)' : G.bg,
+                        background: identified === type ? 'rgba(250,204,21,0.12)' : G.bg,
                         borderColor: identified === type ? G.primary : G.border,
-                        boxShadow: identified === type ? G.glow : 'none',
                         color: identified === type ? G.primary : G.dim,
                         fontFamily: 'monospace',
                       }}>
@@ -523,7 +522,7 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
                   ))}
                 </div>
                 <button onClick={handleSubmit} disabled={!canSubmit}
-                  style={{ background: canSubmit ? 'rgba(0,255,65,0.2)' : 'rgba(0,255,65,0.04)', border: `1px solid ${canSubmit ? G.primary : G.border}`, borderRadius: 6, padding: '8px 0', fontFamily: 'monospace', color: canSubmit ? G.primary : G.dim, cursor: canSubmit ? 'pointer' : 'not-allowed', boxShadow: canSubmit ? G.glow : 'none', letterSpacing: '0.1em', fontSize: '0.8rem' }}>
+                  style={{ background: canSubmit ? 'rgba(250,204,21,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canSubmit ? G.primary : G.border}`, borderRadius: 6, padding: '8px 0', fontFamily: 'monospace', color: canSubmit ? G.primary : G.dim, cursor: canSubmit ? 'pointer' : 'not-allowed', letterSpacing: '0.1em', fontSize: '0.8rem' }}>
                   Enviar y reclamar tokens
                 </button>
               </motion.div>
