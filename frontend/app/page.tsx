@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
+import { DecryptedText } from '@/components/ui/DecryptedText'
 
 export default function Home() {
   return (
@@ -25,35 +26,23 @@ export default function Home() {
       <Corner pos="bottom-4 right-4 scale-[-1]" />
 
       <motion.div
-        className="relative flex flex-col items-center gap-8 w-full max-w-sm"
+        className="relative z-10 flex flex-col items-center gap-8 w-full max-w-sm"
         initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: 'easeOut' }}
       >
 
         {/* Logo */}
         <div className="text-center">
-          {/* Icono animado sin emoji — cuadrado con animación float */}
-          <motion.div
-            className="animate-float mx-auto mb-4"
-            style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #5b21b6, #7c3aed)', border: '1px solid rgba(168,85,247,0.5)', boxShadow: 'var(--glow-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <rect x="6" y="13" width="20" height="3" rx="1.5" fill="rgba(168,85,247,0.9)" />
-              <rect x="14.5" y="5" width="3" height="20" rx="1.5" fill="rgba(168,85,247,0.9)" />
-              <circle cx="7" cy="22" r="3" stroke="rgba(168,85,247,0.6)" strokeWidth="1.5" />
-              <circle cx="25" cy="22" r="3" stroke="rgba(168,85,247,0.6)" strokeWidth="1.5" />
-            </svg>
-          </motion.div>
-
-          <motion.h1
+          <DecryptedText
+            text="TOKEN WARS"
+            animateOn="view"
+            revealDirection="center"
             className="cup-text-outline"
-            style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', lineHeight: 1, fontSize: 'clamp(3rem, 12vw, 5rem)' }}
-            initial={{ letterSpacing: '0.3em', opacity: 0 }}
-            animate={{ letterSpacing: '0.08em', opacity: 1 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-          >
-            TOKEN<br />WARS
-          </motion.h1>
+            parentClassName="block mb-6"
+            speed={150}
+            maxIterations={40}
+            style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', lineHeight: 1, fontSize: 'clamp(3rem, 12vw, 5rem)', fontWeight: 'bold' }}
+          />
 
           <div className="cup-divider mt-3">El juego de los agentes</div>
 

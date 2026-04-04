@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.className} bg-gray-950 antialiased`}>
         {/* Efectos de ambiente Cuphead */}
         <div className="film-grain-overlay" aria-hidden="true" />
-        <SplashCursor color="rgba(250,204,21,0.55)" radius={120} />
+        <SplashCursor />
         <ClickSpark />
 
         {children}

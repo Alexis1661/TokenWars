@@ -374,6 +374,11 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
 // Orquestador
 // ─────────────────────────────────────────────────────────
 function HostPageInner() {
+  useEffect(() => {
+    document.body.classList.add('no-fluid')
+    return () => document.body.classList.remove('no-fluid')
+  }, [])
+
   const searchParams = useSearchParams()
   const sessionId = searchParams.get('sessionId') ?? ''
   if (!sessionId) return <CreateSession />

@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
+import { DecryptedText } from '@/components/ui/DecryptedText'
 
 function getDeviceId(): string {
   if (typeof window === 'undefined') return 'ssr'
@@ -21,6 +22,11 @@ export default function JoinPage() {
   const [reconnecting, setReconnecting] = useState(true)
   const [reconnectInfo, setReconnectInfo] = useState<{ teamName: string; hostCode: string } | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    document.body.classList.add('no-fluid')
+    return () => document.body.classList.remove('no-fluid')
+  }, [])
 
   // Al cargar: verificar si hay una sesión activa guardada en localStorage
   useEffect(() => {
@@ -142,13 +148,19 @@ export default function JoinPage() {
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: 'radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.6) 100%)' }} />
 
-      <div className="relative w-full max-w-sm flex flex-col gap-6">
+      <div className="relative z-10 w-full max-w-sm flex flex-col gap-6">
 
-        {/* Header */}
         <div className="text-center">
-          <div className="text-5xl mb-1"></div>
-          <h1 style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '2.5rem', lineHeight: 1 }}
-            className="cup-text-outline">TOKEN WARS</h1>
+          <DecryptedText
+            text="TOKEN WARS"
+            animateOn="view"
+            revealDirection="center"
+            className="cup-text-outline"
+            parentClassName="block mb-1"
+            speed={150}
+            maxIterations={40}
+            style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '2.5rem', lineHeight: 1, fontWeight: 'bold' }}
+          />
         </div>
 
         {/* Card principal */}

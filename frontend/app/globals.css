@@ -244,3 +244,7 @@ h1, h2, h3 {
   animation: shiny-sweep 2.5s linear infinite;
 }
 
+/* ── Disable fluid on specified pages ── */
+.no-fluid #fluid-cursor-container {
+  display: none !important;
+}

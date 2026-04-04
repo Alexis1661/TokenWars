@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { Timer } from '@/components/ui/Timer'
 import { Keyboard } from '@/components/ui/Keyboard'
-import { GlitchText } from '@/components/ui/GlitchText'
+import { DecryptedText } from '@/components/ui/DecryptedText'
 import type { Level1Round } from '@/lib/types'
 
 const ROUND_SECONDS = 45
@@ -73,7 +73,7 @@ function IntroScreen({ round, onDone }: { round: Level1Round; onDone: () => void
         {/* Countdown ring */}
         <div className="relative" style={{ width: 80, height: 80 }}>
           <svg className="-rotate-90" width="80" height="80" viewBox="0 0 80 80">
-            <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(0,255,65,0.08)" strokeWidth="4" />
+            <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
             <motion.circle cx="40" cy="40" r="32" fill="none" strokeWidth="4" strokeLinecap="round"
               stroke={G.primary}
               strokeDasharray={2 * Math.PI * 32}
@@ -138,7 +138,7 @@ function IntroScreen({ round, onDone }: { round: Level1Round; onDone: () => void
               ].map(({ dot, text }) => (
                 <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0, boxShadow: `0 0 5px ${dot}` }} />
-                  <span style={{ fontSize: '0.73rem', color: 'rgba(0,255,65,0.6)' }}>{text}</span>
+                  <span style={{ fontSize: '0.73rem', color: 'rgba(255,255,255,0.6)' }}>{text}</span>
                 </div>
               ))}
             </div>
@@ -266,6 +266,11 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const keyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  useEffect(() => {
+    document.body.classList.add('no-fluid')
+    return () => document.body.classList.remove('no-fluid')
+  }, [])
+
   const handleIntroEnd = useCallback(() => {
     setStartTime(Date.now())
     setPhase('playing')
@@ -355,7 +360,7 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
       </AnimatePresence>
 
       {/* Layout de dos columnas */}
-      <div className="flex gap-4 p-4 w-full" style={{ minHeight: 0 }}>
+      <div className="relative z-10 flex gap-4 p-4 w-full" style={{ minHeight: 0 }}>
 
         {/* ── IZQUIERDA: terminal + teclado ── */}
         <div className="flex flex-col gap-3" style={{ flex: '0 0 44%', minWidth: 0 }}>
@@ -381,10 +386,13 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
               </span>
             </div>
             <div className="p-4" style={{ background: G.bg, maxHeight: 240, overflow: 'auto' }}>
-              <GlitchText
+              <DecryptedText
                 text={round.technical_content}
-                speed={60}
-                className="text-xs text-gray-200"
+                animateOn="view"
+                revealDirection="start"
+                sequential
+                speed={40}
+                className="text-xs text-gray-200 font-mono"
               />
             </div>
           </div>
