@@ -168,7 +168,7 @@ export default function JoinPage() {
 
           {/* Título del paso */}
           <div className="cup-divider text-base">
-            {step === 'code' ? '★ Ingresa el Código ★' : '★ Nombre del Equipo ★'}
+            {step === 'code' ? 'Ingresa el Código' : 'Nombre del Equipo'}
           </div>
 
           <AnimatePresence mode="wait">
@@ -200,7 +200,7 @@ export default function JoinPage() {
                   ))}
                 </div>
 
-                {error && <p className="text-center text-sm font-bold" style={{ color: 'var(--cup-red)' }}>⚠ {error}</p>}
+                {error && <p className="text-center text-sm font-bold" style={{ color: 'var(--cup-red)' }}>{error}</p>}
 
                 <button onClick={handleCodeSubmit} disabled={hostCode.length !== 6} className="cup-btn cup-btn-gold text-xl py-3">
                   Continuar →
@@ -232,7 +232,7 @@ export default function JoinPage() {
                   style={{ fontFamily: "'Orbitron', sans-serif" }}
                 />
 
-                {error && <p className="text-center text-sm font-bold" style={{ color: 'var(--cup-red)' }}>⚠ {error}</p>}
+                {error && <p className="text-center text-sm font-bold" style={{ color: 'var(--cup-red)' }}>{error}</p>}
 
                 <button onClick={handleJoin} disabled={loading || !teamName.trim()} className="cup-btn cup-btn-gold text-xl py-3">
                   {loading

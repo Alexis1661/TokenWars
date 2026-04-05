@@ -16,13 +16,12 @@ const G = {
   green: '#4ade80',
 }
 
-const CARD_META: Record<string, { emoji: string; description: string; modifier: string }> = {
-  'DOBLAR O NADA':    { emoji: '🔴', description: 'Si acierta gana el doble, si falla pierde TODO lo apostado.',   modifier: '×2 si acierta / −100% si falla' },
-  'RED DE SEGURIDAD': { emoji: '🟡', description: 'Si falla solo pierde la mitad de lo apostado.',                  modifier: '−50% si falla' },
-  'TRANSFERENCIA':    { emoji: '🟠', description: 'Si acierta, roba +100T del equipo que más apostó.',              modifier: '+100T extra si acierta' },
-  'SEGURO CRUZADO':   { emoji: '🟣', description: 'Si tú y el aliado aciertan, ambos ganan +150T extra.',           modifier: '+150T extra si acierta' },
-  'CARTA OSCURA':     { emoji: '⚫', description: 'Recibes una pista críptica antes de ver la pregunta completa.',  modifier: 'pista anticipada' },
-  'FAROL':            { emoji: '🟢', description: 'Si acierta, gana el TRIPLE de lo apostado.',                     modifier: '×3 si acierta' },
+const CARD_META: Record<string, { symbol: string; color: string; description: string; modifier: string }> = {
+  'DOBLAR O NADA':    { symbol: 'X2', color: '#f87171', description: 'Si acierta gana el doble, si falla pierde TODO lo apostado.',   modifier: '×2 si acierta / −100% si falla' },
+  'RED DE SEGURIDAD': { symbol: '-½', color: '#facc15', description: 'Si falla solo pierde la mitad de lo apostado.',                  modifier: '−50% si falla' },
+  'TRANSFERENCIA':    { symbol: '+T', color: '#fb923c', description: 'Si acierta, roba +100T del equipo que más apostó.',              modifier: '+100T extra si acierta' },
+  'CARTA OSCURA':     { symbol: '??', color: '#a3a3a3', description: 'Recibes una pista críptica antes de ver la pregunta completa.',  modifier: 'pista anticipada' },
+  'FAROL':            { symbol: 'X3', color: '#4ade80', description: 'Si acierta, gana el TRIPLE de lo apostado.',                     modifier: '×3 si acierta' },
 }
 
 interface QuestionPayload {
@@ -52,13 +51,10 @@ function normaliseQuestion(q: any): QuestionPayload {
 
 type Phase =
   | 'idle'
-  | 'cards'       // cartas repartidas, equipo elige apuesta y carta ANTES de ver la pregunta
-  | 'answering'   // pregunta visible, equipo elige opción en la ruleta
+  | 'cards'
+  | 'answering'
   | 'spinning'
   | 'revealed'
-  | 'final_decision'
-  | 'voting_punishment'
-  | 'punishment_results'
 
 interface LaTraicionProps {
   team: Team
@@ -90,14 +86,11 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
   // Resultado del settle (tokens ganados/perdidos esta ronda)
   const [settleResult, setSettleResult] = useState<{ earned: number } | null>(null)
 
-  // Fase final
-  const [leaderDecision, setLeaderDecision] = useState<'COMPARTIR' | 'ROBAR' | 'IGNORAR' | null>(null)
-  const [punishmentVotes, setPunishmentVotes] = useState<Record<string, boolean>>({})
-  const [myPunishmentVote, setMyPunishmentVote] = useState<boolean | null>(null)
+  // Countdown durante la fase answering
+  const [answerTimer, setAnswerTimer] = useState(0)
 
-  const sortedTeams = [...allTeams].sort((a, b) => b.token_balance - a.token_balance)
-  const leaderTeam = sortedTeams[0]
-  const isLeader = leaderTeam?.id === team.id
+  // Pista críptica (CARTA OSCURA) — mostrar como banner en lugar de alert
+  const [pistaOscura, setPistaOscura] = useState<string | null>(null)
 
   // Sync ref
   useEffect(() => { questionRef.current = question }, [question])
@@ -118,9 +111,12 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
         }
       })
       .on('broadcast', { event: 'pista_oscura' }, (payload) => {
-        // Mostramos en un banner temporal
         const pista = payload.payload?.pista
-        if (pista) alert(`CARTA OSCURA — Pista: ${pista}`)
+        if (pista) {
+          setPistaOscura(pista)
+          // Auto-dismiss después de 12s
+          setTimeout(() => setPistaOscura(null), 12000)
+        }
       })
       .subscribe()
 
@@ -133,6 +129,7 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
         setAnswerConfirmed(false)
         setSettleResult(null)
         setPhase('answering')
+        setAnswerTimer(30)
         setBetConfirmed(true) // auto-confirma si no lo hicieron antes
       })
       .on('broadcast', { event: 'settle_results' }, (payload) => {
@@ -150,16 +147,6 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
       .on('broadcast', { event: 'revealed' }, () => {
         setTimeout(() => setPhase('revealed'), 1000)
       })
-      .on('broadcast', { event: 'honrar_o_traicionar' }, () => {
-        setPhase('final_decision')
-      })
-      .on('broadcast', { event: 'voto_castigo' }, (payload) => {
-        const { voter_id, castigar } = payload.payload
-        setPunishmentVotes((prev) => ({ ...prev, [voter_id]: castigar }))
-      })
-      .on('broadcast', { event: 'resultado_castigo' }, () => {
-        setPhase('punishment_results')
-      })
       .subscribe()
 
     return () => {
@@ -174,6 +161,13 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
     const id = setInterval(() => setBetTimer((t) => t - 1), 1000)
     return () => clearInterval(id)
   }, [phase, betTimer])
+
+  // Countdown timer durante fase 'answering'
+  useEffect(() => {
+    if (phase !== 'answering' || answerTimer <= 0) return
+    const id = setInterval(() => setAnswerTimer((t) => t - 1), 1000)
+    return () => clearInterval(id)
+  }, [phase, answerTimer])
 
   const MIN_BET = 50
   const maxBet = Math.max(MIN_BET, Math.floor(team.token_balance * 0.4))
@@ -198,25 +192,6 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
     })
   }
 
-  const submitLeaderDecision = async (decision: 'COMPARTIR' | 'ROBAR' | 'IGNORAR') => {
-    setLeaderDecision(decision)
-    await supabase.channel('nivel3_host').send({
-      type: 'broadcast',
-      event: 'decision_final',
-      payload: { team_id: team.id, decision },
-    })
-    setPhase(decision === 'ROBAR' ? 'voting_punishment' : 'punishment_results')
-  }
-
-  const submitPunishmentVote = async (castigar: boolean) => {
-    setMyPunishmentVote(castigar)
-    await supabase.channel('nivel3_host').send({
-      type: 'broadcast',
-      event: 'voto_castigo',
-      payload: { voter_id: team.id, castigar },
-    })
-  }
-
   const handleWheelStop = () => {
     // Fallback local si el broadcast 'revealed' llega tarde
     setTimeout(() => setPhase((p) => (p === 'spinning' ? 'revealed' : p)), 1500)
@@ -225,25 +200,20 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    // fixed inset-0 igual que Millonario — el overlay cubre la pantalla completa
-    // overflow-y-auto va en el contenedor INTERIOR para no romper flex-1
     <div
-      className="fixed inset-0 z-[70] flex flex-col"
-      style={{ background: G.bg, fontFamily: "'Exo 2', sans-serif", color: '#F5F5F5' }}
+      className="w-full flex flex-col items-center px-4 py-4 overflow-y-auto"
+      style={{ background: G.bg, height: 'calc(100vh - 56px)', fontFamily: "'Exo 2', sans-serif", color: '#F5F5F5' }}
     >
-      {/* Zona scrollable interior */}
-      <div className="flex-1 overflow-y-auto flex flex-col items-center px-4 py-6">
+      <div className="w-full flex flex-col items-center">
+
 
       {/* ── IDLE ── */}
       {phase === 'idle' && (
         <div className="flex-1 flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
-            style={{ fontSize: '4rem' }}
-          >
-            🎲
-          </motion.div>
+          <div
+            className="w-12 h-12 border-4 border-t-transparent rounded-full animate-spin"
+            style={{ borderColor: G.primary, borderTopColor: 'transparent' }}
+          />
           <h2
             style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.5rem' }}
           >
@@ -315,33 +285,38 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
           </div>
 
           {/* Cartas */}
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2">
             <span
-              style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '0.85rem' }}
+              style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '0.8rem' }}
             >
-              TUS CARTAS (opcional — elige una)
+              ELIGE UNA CARTA (opcional)
             </span>
-            <div className="flex gap-4 flex-wrap">
+            <div
+              className="flex gap-3 overflow-x-auto pb-2"
+              style={{ scrollbarWidth: 'thin', scrollbarColor: `${G.border}40 transparent` }}
+            >
               {myCards.length === 0 && (
                 <span style={{ color: G.dim, fontStyle: 'italic', fontSize: '0.9rem' }}>
                   No tienes cartas en esta ronda
                 </span>
               )}
               {myCards.map((c, i) => {
-                const meta = CARD_META[c] ?? { emoji: '🃏', description: 'Carta especial.' }
+                const meta = CARD_META[c] ?? { symbol: '?', description: 'Carta especial.' }
                 return (
                   <PlayingCard
                     key={i}
                     name={c}
-                    emoji={meta.emoji}
+                    emoji={meta.symbol}
                     description={meta.description}
                     revealed={cardsRevealed}
-                    flipDelay={i * 180} // stagger de 180ms entre cartas
+                    flipDelay={i * 120}
                     selected={selectedCard === c}
                     onClick={() => {
                       if (!betConfirmed) setSelectedCard(c === selectedCard ? null : c)
                     }}
                     disabled={betConfirmed}
+                    width={95}
+                    height={136}
                   />
                 )
               })}
@@ -383,7 +358,7 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
               )}
               {selectedCard && CARD_META[selectedCard] && (
                 <span style={{ fontSize: '0.8rem', color: G.primary, display: 'block' }}>
-                  {CARD_META[selectedCard].emoji} {CARD_META[selectedCard].modifier}
+                  {CARD_META[selectedCard].modifier}
                 </span>
               )}
               <span style={{ fontSize: '0.8rem', color: G.dim, marginTop: 2, display: 'block' }}>
@@ -396,7 +371,44 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
 
       {/* ── ANSWERING — pregunta + ruleta ── */}
       {(phase === 'answering' || phase === 'spinning' || phase === 'revealed') && question && (
-        <div className="w-full max-w-5xl flex flex-col items-center gap-6">
+        <div className="w-full max-w-5xl flex flex-col items-center gap-4">
+
+          {/* Pista críptica — inline, solo visible si existe */}
+          <AnimatePresence>
+            {pistaOscura && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="w-full overflow-hidden"
+              >
+                <div
+                  className="w-full rounded-xl px-4 py-3 flex items-start gap-3"
+                  style={{
+                    background: 'linear-gradient(135deg, #0d0d0d 0%, #1a1a2e 100%)',
+                    border: '1px solid #333',
+                    boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)',
+                  }}
+                >
+                  <div className="flex-1 flex flex-col gap-0.5">
+                    <span style={{ fontFamily: "'Orbitron', sans-serif", color: '#666', fontSize: '0.6rem', letterSpacing: '0.18em' }}>
+                      CARTA OSCURA · PISTA CRÍPTICA
+                    </span>
+                    <p style={{ color: '#d4d4d4', fontStyle: 'italic', fontSize: '0.9rem', lineHeight: 1.5, margin: 0 }}>
+                      «{pistaOscura}»
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setPistaOscura(null)}
+                    style={{ color: '#555', fontSize: '0.9rem', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, paddingTop: 2 }}
+                  >
+                    X
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Pregunta */}
           <div
             className="w-full p-5 text-center text-lg font-bold rounded-xl"
@@ -438,8 +450,8 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
                     {betAmount} T{selectedCard ? ` · ${selectedCard}` : ''}
                   </span>
                   {selectedCard && CARD_META[selectedCard] && (
-                    <span style={{ fontSize: '0.72rem', color: CARD_META[selectedCard].emoji === '🔴' ? '#f87171' : CARD_META[selectedCard].emoji === '🟢' ? G.green : G.primary, opacity: 0.85 }}>
-                      {CARD_META[selectedCard].emoji} {CARD_META[selectedCard].modifier}
+                    <span style={{ fontSize: '0.72rem', color: CARD_META[selectedCard].color, opacity: 0.85 }}>
+                      {CARD_META[selectedCard].modifier}
                     </span>
                   )}
                 </div>
@@ -447,6 +459,22 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
 
               {phase === 'answering' && (
                 <>
+                  {/* Countdown */}
+                  {answerTimer > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span style={{ color: G.dim, fontSize: '0.8rem' }}>Tiempo:</span>
+                      <span
+                        style={{
+                          fontFamily: 'monospace',
+                          fontSize: '1.4rem',
+                          fontWeight: 700,
+                          color: answerTimer <= 10 ? G.error : G.primary,
+                        }}
+                      >
+                        {answerTimer}s
+                      </span>
+                    </div>
+                  )}
                   <p style={{ color: G.dim, fontSize: '0.85rem' }}>
                     Elige tu respuesta en la ruleta:
                   </p>
@@ -514,7 +542,7 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
                   className="text-center py-6"
                   style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.3rem' }}
                 >
-                  🎰 LA RULETA GIRA...
+                  LA RULETA GIRA...
                 </motion.div>
               )}
 
@@ -547,7 +575,7 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
                         fontFamily: "'Orbitron', sans-serif",
                       }}
                     >
-                      {selectedOption === question.respuesta_correcta ? '✓ ACERTASTE' : '✗ FALLASTE'}
+                      {selectedOption === question.respuesta_correcta ? 'ACERTASTE' : 'FALLASTE'}
                     </div>
                   )}
 
@@ -574,7 +602,7 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
                       </span>
                       {selectedCard && CARD_META[selectedCard] && (
                         <span style={{ fontSize: '0.8rem', color: G.dim }}>
-                          {CARD_META[selectedCard].emoji} {selectedCard} — {CARD_META[selectedCard].modifier}
+                          {selectedCard} — {CARD_META[selectedCard].modifier}
                         </span>
                       )}
                     </motion.div>
@@ -586,145 +614,6 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
         </div>
       )}
 
-      {/* ── FINAL: HONRAR O TRAICIONAR ── */}
-      {(phase === 'final_decision' ||
-        phase === 'voting_punishment' ||
-        phase === 'punishment_results') && (
-        <div className="w-full max-w-4xl flex flex-col items-center gap-8 mt-6">
-          <h1
-            style={{
-              fontFamily: "'Orbitron', sans-serif",
-              color: G.error,
-              fontSize: '2rem',
-              textAlign: 'center',
-              textShadow: `0 0 20px ${G.error}`,
-            }}
-          >
-            HONRAR O TRAICIONAR
-          </h1>
-
-          <div className="text-xl text-center">
-            El líder es{' '}
-            <strong style={{ color: G.primary }}>{leaderTeam?.name}</strong>{' '}
-            con {leaderTeam?.token_balance} T
-          </div>
-
-          {phase === 'final_decision' && isLeader && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
-              {(
-                [
-                  { key: 'COMPARTIR', label: '🤝 COMPARTIR', desc: 'Da 200T a todos + Reputación', color: G.green },
-                  { key: 'ROBAR', label: '🔪 ROBAR', desc: 'Roba 150T al 2do lugar', color: G.error },
-                  { key: 'IGNORAR', label: '🤐 IGNORAR', desc: 'No haces nada', color: G.dim },
-                ] as const
-              ).map(({ key, label, desc, color }) => (
-                <button
-                  key={key}
-                  onClick={() => submitLeaderDecision(key)}
-                  style={{
-                    padding: '24px',
-                    background: '#1a0a2e',
-                    border: `2px solid ${color}`,
-                    color,
-                    borderRadius: 12,
-                    cursor: 'pointer',
-                    fontWeight: 700,
-                    fontSize: '1rem',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {label}
-                  <br />
-                  <span style={{ fontSize: '0.85rem', color: '#ccc', fontWeight: 400 }}>{desc}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {phase === 'final_decision' && !isLeader && (
-            <motion.div
-              animate={{ opacity: [1, 0.6, 1] }}
-              transition={{ repeat: Infinity, duration: 1.5 }}
-              style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif" }}
-            >
-              Esperando la decisión del líder...
-            </motion.div>
-          )}
-
-          {phase === 'voting_punishment' && (
-            <div className="flex flex-col items-center gap-6 w-full">
-              <div
-                style={{ color: G.error, fontFamily: "'Orbitron', sans-serif", fontSize: '1.3rem', textAlign: 'center' }}
-              >
-                ¡EL LÍDER DECIDIÓ ROBAR!
-              </div>
-              {!isLeader && myPunishmentVote === null && (
-                <>
-                  <p style={{ color: '#ccc', textAlign: 'center' }}>
-                    ¿Aplicar castigo colectivo? (−50T al líder por cada equipo que vote sí)
-                  </p>
-                  <div className="flex gap-4">
-                    <button
-                      onClick={() => submitPunishmentVote(true)}
-                      style={{ padding: '12px 24px', background: '#7f1d1d', border: `1px solid ${G.error}`, color: '#fff', borderRadius: 8, cursor: 'pointer', fontWeight: 700 }}
-                    >
-                      SÍ, CASTIGAR
-                    </button>
-                    <button
-                      onClick={() => submitPunishmentVote(false)}
-                      style={{ padding: '12px 24px', background: '#1f2937', border: `1px solid #555`, color: '#fff', borderRadius: 8, cursor: 'pointer', fontWeight: 700 }}
-                    >
-                      NO, DEJARLO
-                    </button>
-                  </div>
-                </>
-              )}
-              {!isLeader && myPunishmentVote !== null && (
-                <div style={{ color: G.green }}>
-                  Voto registrado: {myPunishmentVote ? 'CASTIGAR' : 'NO CASTIGAR'}
-                </div>
-              )}
-              {isLeader && (
-                <motion.div
-                  animate={{ opacity: [1, 0.6, 1] }}
-                  transition={{ repeat: Infinity, duration: 1.5 }}
-                  style={{ color: G.error }}
-                >
-                  Los demás equipos están votando...
-                </motion.div>
-              )}
-              {/* Live vote tally */}
-              <div className="flex gap-3 flex-wrap justify-center">
-                {Object.entries(punishmentVotes).map(([tid, v]) => (
-                  <span
-                    key={tid}
-                    style={{
-                      padding: '4px 12px',
-                      borderRadius: 99,
-                      background: v ? `${G.error}30` : `${G.dim}20`,
-                      color: v ? G.error : G.dim,
-                      fontSize: '0.8rem',
-                      border: `1px solid ${v ? G.error : G.dim}`,
-                    }}
-                  >
-                    {allTeams.find((t) => t.id === tid)?.name ?? tid}: {v ? 'Sí' : 'No'}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {phase === 'punishment_results' && (
-            <motion.div
-              animate={{ scale: [1, 1.05, 1] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-              style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.5rem', textAlign: 'center' }}
-            >
-              ¡EL VEREDICTO HA SIDO DADO!
-            </motion.div>
-          )}
-        </div>
-      )}
 
       </div>{/* fin zona scrollable */}
     </div>

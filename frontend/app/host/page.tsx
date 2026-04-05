@@ -68,7 +68,7 @@ function CreateSession() {
         </div>
 
         <div className="cup-panel p-6 flex flex-col gap-4">
-          <div className="cup-divider text-sm">★ Acceso Restringido ★</div>
+          <div className="cup-divider text-sm">Acceso Restringido</div>
 
           <input type="password" value={password} autoFocus
             onChange={(e) => { setPassword(e.target.value); setError('') }}
@@ -78,7 +78,7 @@ function CreateSession() {
           />
 
           {error && (
-            <p className="text-center text-sm font-bold" style={{ color: 'var(--cup-red)' }}>⚠ {error}</p>
+            <p className="text-center text-sm font-bold" style={{ color: 'var(--cup-red)' }}>{error}</p>
           )}
 
           <button onClick={handleCreate} disabled={loading || !password} className="cup-btn cup-btn-gold text-xl py-4">
@@ -179,7 +179,7 @@ function LobbyScreen({ sessionId, hostCode, teams, onStart, starting }: {
 // ─────────────────────────────────────────────────────────
 // Pantalla 3 — Dashboard
 // ─────────────────────────────────────────────────────────
-function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound, activeQuestion2, onRevealQ2, revealingQ2, activeQuestion3, onRevealQ3, revealingQ3, finalVoteCounts, onAwardFinalVote, awardingVote, casinoAutomated, casinoRound, casinoStatus, casinoTimer, setCasinoAutomated, level3ChannelRef, onJumpToLevel }: {
+function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound, activeQuestion2, onRevealQ2, revealingQ2, casinoAutomated, casinoRound, casinoStatus, casinoTimer, casinoBetsCount, setCasinoAutomated, level3ChannelRef, onJumpToLevel, onDealCards, onSendQuestion }: {
   session: ReturnType<typeof usePublicGameData>['session']
   teams: ReturnType<typeof usePublicGameData>['teams']
   events: ReturnType<typeof useHostGameData>['events']
@@ -193,22 +193,21 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
   activeQuestion2: Level2Question | null
   onRevealQ2: () => void
   revealingQ2: boolean
-  activeQuestion3: Level3Question | null
-  onRevealQ3: () => void
-  revealingQ3: boolean
-  finalVoteCounts: Record<string, number>
-  onAwardFinalVote: () => void
-  awardingVote: boolean
   casinoAutomated: boolean
   casinoRound: number
   casinoStatus: string
   casinoTimer: number
+  casinoBetsCount: number
   setCasinoAutomated: (v: boolean) => void
   level3ChannelRef: React.RefObject<any>
   onJumpToLevel: (target: SessionStatus) => void
+  onDealCards: () => Promise<void>
+  onSendQuestion: (round: number) => Promise<void>
 }) {
+  const router = useRouter()
   const [showEndModal, setShowEndModal] = useState(false)
   const [ending, setEnding] = useState(false)
+  const [showExitModal, setShowExitModal] = useState(false)
   const [showDevJump, setShowDevJump] = useState(false)
   const [seedingTokens, setSeedingTokens] = useState(false)
 
@@ -228,6 +227,50 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
 
   return (
     <main className="min-h-screen flex flex-col" style={{ background: 'var(--cup-bg)' }}>
+
+      {/* Modal — Salir del panel sin terminar la sesión */}
+      <AnimatePresence>
+        {showExitModal && (
+          <motion.div
+            key="exit-modal"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: 'rgba(0,0,0,0.8)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.85, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.85, y: 16 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 22 }}
+              className="cup-panel p-6 w-full max-w-sm flex flex-col gap-5"
+            >
+              <div className="text-center">
+                <div className="text-3xl mb-2"></div>
+                <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: '#3b82f6', fontSize: '1.4rem', lineHeight: 1 }}>
+                  ¿Salir del panel?
+                </h2>
+                <p className="mt-2 text-sm" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Exo 2', sans-serif" }}>
+                  La sesión seguirá activa. Puedes volver usando el mismo link con el <strong style={{ color: 'var(--cup-cream)' }}>sessionId</strong>.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowExitModal(false)}
+                  className="cup-btn flex-1 text-base py-3"
+                  style={{ background: 'var(--cup-bg3)', color: 'var(--cup-cream)' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => router.push('/host')}
+                  className="cup-btn flex-1 text-base py-3"
+                  style={{ background: '#1e40af', color: '#fff' }}
+                >
+                  Salir
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modal — Terminar partida anticipadamente */}
       <AnimatePresence>
@@ -305,7 +348,7 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
               style={{ background: 'rgba(30,80,180,0.15)', border: '2px solid #3b82f6', color: '#3b82f6' }}
               title="Saltar a nivel (modo pruebas)"
             >
-              DEV ⚡
+              DEV
             </button>
             {showDevJump && (
               <div
@@ -313,7 +356,7 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                 style={{ background: 'var(--cup-bg2)', border: '1px solid #3b82f6', minWidth: 180 }}
               >
                 <p className="text-[10px] font-mono text-blue-400 uppercase tracking-widest mb-1">Saltar a nivel</p>
-                {(['level1', 'level2', 'level3', 'finished'] as const).map((lvl) => (
+                {(['level1', 'level2', 'level3'] as const).map((lvl) => (
                   <button
                     key={lvl}
                     onClick={() => { onJumpToLevel(lvl); setShowDevJump(false) }}
@@ -351,11 +394,20 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                     setShowDevJump(false)
                   }}
                 >
-                  {seedingTokens ? 'Dando...' : '💰 Dar 500T a todos'}
+                  {seedingTokens ? 'Dando...' : 'Dar 500T a todos'}
                 </button>
               </div>
             )}
           </div>
+
+          <button
+            onClick={() => setShowExitModal(true)}
+            className="cup-btn text-sm px-3 py-2"
+            style={{ background: 'rgba(30,80,180,0.12)', border: '1px solid #3b82f6', color: '#3b82f6' }}
+            title="Salir del panel (la sesión continúa)"
+          >
+            Salir
+          </button>
 
           {session.status !== 'finished' && (
             <button onClick={() => setShowEndModal(true)}
@@ -394,7 +446,7 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                     className="flex items-center justify-between py-1"
                     style={{ borderBottom: '1px solid rgba(212,160,23,0.15)' }}>
                     <div className="flex items-center gap-2">
-                      <span style={{ color: 'var(--cup-gold)' }}>★</span>
+                      <span style={{ color: 'var(--cup-gold)' }}>-</span>
                       <span style={{ color: 'var(--cup-cream)', fontFamily: "'Orbitron', sans-serif" }}>{team?.name ?? 'Equipo'}</span>
                       <span className="text-sm" style={{ color: 'var(--cup-gold-dark)' }}>→ {ev.type.replace(/_/g, ' ')}</span>
                     </div>
@@ -463,7 +515,7 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                   {activeQuestion2 && activeQuestion2.started_at && !activeQuestion2.revealed_at && (
                     <button onClick={onRevealQ2} disabled={revealingQ2}
                       className="cup-btn cup-btn-gold px-6 py-3">
-                      {revealingQ2 ? 'Revelando...' : '🔍 Revelar Respuesta'}
+                      {revealingQ2 ? 'Revelando...' : 'Revelar Respuesta'}
                     </button>
                   )}
                   {(!activeQuestion2 || activeQuestion2.revealed_at) && (
@@ -498,12 +550,12 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-mono text-white/70">Estado:</span>
                       <span className="text-sm font-bold uppercase tracking-widest" style={{ color: G.primary }}>
-                        {casinoStatus === 'idle' && '⌛ Esperando Inicio'}
-                        {casinoStatus === 'seeding' && '🃏 Repartiendo Cartas...'}
-                        {casinoStatus === 'cards' && '💰 Equipos fijando apuesta'}
-                        {casinoStatus === 'answering' && '🎲 Pregunta visible — votando'}
-                        {casinoStatus === 'spinning' && '🎡 Ruleta Girando...'}
-                        {casinoStatus === 'revealed' && '✅ Resultados'}
+                        {casinoStatus === 'idle' && 'Esperando Inicio'}
+                        {casinoStatus === 'seeding' && 'Repartiendo Cartas...'}
+                        {casinoStatus === 'cards' && 'Equipos fijando apuesta'}
+                        {casinoStatus === 'answering' && 'Pregunta visible — votando'}
+                        {casinoStatus === 'spinning' && 'Ruleta Girando...'}
+                        {casinoStatus === 'revealed' && 'Resultados'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -513,41 +565,54 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                     {(casinoStatus === 'cards' || casinoStatus === 'answering') && (
                       <div className="flex flex-col gap-1">
                         <div className="flex justify-between text-[10px] font-mono text-yellow-500/60 uppercase">
-                          <span>Tiempo restante</span>
-                          <span>{betsCount} / {teams.length} apuestas</span>
+                          <span>{casinoTimer}s restantes</span>
+                          <span>{casinoStatus === 'cards' ? casinoBetsCount : Object.keys({}).length} / {teams.length} {casinoStatus === 'cards' ? 'apuestas' : 'votos'}</span>
                         </div>
                         <div className="h-2 bg-slate-800 rounded-full overflow-hidden border border-white/5">
-                          <motion.div animate={{ width: `${(casinoTimer / 60) * 100}%` }} className="h-full bg-yellow-500" />
+                          <motion.div animate={{ width: `${(casinoTimer / 30) * 100}%` }} className="h-full bg-yellow-500" />
                         </div>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* Botones manuales (mantener por si acaso) */}
-                    <button onClick={async () => { /* logic */ }} className="cup-btn cup-btn-gold py-2 text-sm">🃏 Cartas</button>
-                    <button onClick={async () => { /* logic */ }} className="cup-btn cup-btn-gold py-2 text-sm">🎲 Pregunta</button>
-                    <button onClick={() => level3ChannelRef.current?.send({ type: 'broadcast', event: 'spin_wheel', payload: {} })} className="cup-btn py-2 text-sm" style={{ background: '#5b21b6' }}>🎡 Girar</button>
-                    <button onClick={() => level3ChannelRef.current?.send({ type: 'broadcast', event: 'revealed', payload: {} })} className="cup-btn py-2 text-sm" style={{ background: '#22c55e' }}>💰 Liquidar</button>
+                  <div className="flex flex-col gap-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={async () => {
+                          await onDealCards();
+                          level3ChannelRef.current?.send({ type: 'broadcast', event: 'cartas', payload: {} });
+                        }}
+                        className="cup-btn cup-btn-gold py-2 text-sm"
+                      >
+                        Repartir Cartas
+                      </button>
+                      <button
+                        onClick={() => onSendQuestion(Math.max(casinoRound, 1))}
+                        className="cup-btn cup-btn-gold py-2 text-sm"
+                      >
+                        Generar Pregunta
+                      </button>
+                      <button
+                        onClick={() => level3ChannelRef.current?.send({ type: 'broadcast', event: 'spin_wheel', payload: {} })}
+                        className="cup-btn py-2 text-sm"
+                        style={{ background: '#5b21b6' }}
+                      >
+                        Girar Ruleta
+                      </button>
+                      <button
+                        onClick={() => level3ChannelRef.current?.send({ type: 'broadcast', event: 'revealed', payload: {} })}
+                        className="cup-btn py-2 text-sm"
+                        style={{ background: '#22c55e' }}
+                      >
+                        Revelar / Liquidar
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Botón manual para trigger de final decision */}
-              {(casinoRound >= 4 || !casinoAutomated) && (
-                <div className="cup-panel px-4 py-3 flex flex-col gap-2">
-                  <p className="text-xs" style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold-dark)' }}>MOMENTO DE LA VERDAD (FINAL)</p>
-                  <button 
-                    onClick={() => level3ChannelRef.current?.send({ type: 'broadcast', event: 'honrar_o_traicionar', payload: {} })}
-                    className="cup-btn py-3 text-sm font-bold" style={{ background: 'var(--cup-red)' }}
-                  >
-                    ⚖️ Iniciar HONRAR O TRAICIONAR
-                  </button>
-                </div>
-              )}
-
               <button onClick={onAdvance} disabled={advancing} className="cup-btn text-xl py-4 mt-4" style={{ background: 'var(--cup-red)' }}>
-                {advancing ? 'Terminando...' : '▶ TERMINAR JUEGO'}
+                {advancing ? 'Terminando...' : 'TERMINAR JUEGO'}
               </button>
             </div>
           )}
@@ -597,10 +662,6 @@ function HostSession({ sessionId }: { sessionId: string }) {
   const [endingRound, setEndingRound] = useState(false)
   const [activeQuestion2, setActiveQuestion2] = useState<Level2Question | null>(null)
   const [revealingQ2, setRevealingQ2] = useState(false)
-  const [activeQuestion3, setActiveQuestion3] = useState<Level3Question | null>(null)
-  const [revealingQ3, setRevealingQ3] = useState(false)
-  const [finalVoteCounts, setFinalVoteCounts] = useState<Record<string, number>>({})
-  const [awardingVote, setAwardingVote] = useState(false)
 
   // Track ronda activa durante level1
   useEffect(() => {
@@ -682,10 +743,16 @@ function HostSession({ sessionId }: { sessionId: string }) {
   const level3ChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   // Prevent duplicate question generation when effect re-runs
   const questionSentRef = useRef(false);
-  // Votos acumulados de la ronda actual: { [teamId]: { option, bet, card } }
+  // Votos de respuesta acumulados: { [teamId]: { option, bet, card } }
   const casinoVotesRef = useRef<Record<string, { option: string; bet: number; card: string | null }>>({});
+  // Apuestas/cartas fijadas en fase cards: { [teamId]: { bet, card } }
+  const casinoCardBetsRef = useRef<Record<string, { bet: number; card: string | null }>>({});
   // Pregunta actual (necesaria para el settle)
-  const casinoQuestionRef = useRef<{ respuesta_correcta: string } | null>(null);
+  const casinoQuestionRef = useRef<{ respuesta_correcta: string; pista_criptica?: string } | null>(null);
+  // Cartas asignadas por equipo (se guardan al inicio para reenviar en cada ronda)
+  const casinoTeamCardsRef = useRef<Record<string, string[]>>({});
+  // Conteo de apuestas confirmadas (bet_confirmed broadcasts)
+  const [casinoBetsCount, setCasinoBetsCount] = useState(0);
 
   // Maintain Level 3 Channel (global broadcast)
   useEffect(() => {
@@ -697,12 +764,19 @@ function HostSession({ sessionId }: { sessionId: string }) {
     return () => { supabase.removeChannel(chan) };
   }, [session?.status]);
 
-  // Escuchar votos de los equipos en nivel3_host
+  // Escuchar eventos de los equipos en nivel3_host
   useEffect(() => {
     if (!session || session.status !== 'level3') return;
 
     const hostChan = supabase
       .channel('nivel3_host', { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'bet_confirmed' }, (payload) => {
+        const { team_id, bet, card } = payload.payload ?? {};
+        if (team_id) {
+          casinoCardBetsRef.current[team_id] = { bet: Number(bet) || 50, card: card ?? null };
+          setCasinoBetsCount((n) => n + 1);
+        }
+      })
       .on('broadcast', { event: 'team_voted' }, (payload) => {
         const { team_id, option, bet, card } = payload.payload ?? {};
         if (team_id) {
@@ -714,6 +788,61 @@ function HostSession({ sessionId }: { sessionId: string }) {
     return () => { supabase.removeChannel(hostChan) };
   }, [session?.status]);
 
+  // Helper: enviar cartas almacenadas a todos los equipos (re-usable cada ronda)
+  const sendCardsToTeams = (teamCards: Record<string, string[]>) => {
+    for (const [tid, cards] of Object.entries(teamCards)) {
+      supabase.channel(`private-team-${tid}`)
+        .send({ type: 'broadcast', event: 'cartas', payload: { cards } });
+    }
+  };
+
+  const ALL_CARDS = [
+    'DOBLAR O NADA',
+    'RED DE SEGURIDAD',
+    'TRANSFERENCIA',
+    'CARTA OSCURA',
+    'FAROL',
+  ];
+
+  // Helper: repartir todas las cartas a todos los equipos
+  const dealCards = async () => {
+    const teamCards: Record<string, string[]> = {};
+    for (const t of teams) {
+      teamCards[t.id] = ALL_CARDS;
+    }
+    casinoTeamCardsRef.current = teamCards;
+    sendCardsToTeams(teamCards);
+  };
+
+  // Helper: generar y enviar pregunta del Croupier
+  const sendQuestion = async (round: number) => {
+    const topics = ['langchain', 'react', 'tool_calling', 'comparativa'];
+    const topic = topics[(round - 1) % topics.length];
+    try {
+      const res = await fetch('/api/nivel3/pregunta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic }),
+      }).then((r) => r.json());
+      if (res.ok && res.question) {
+        casinoQuestionRef.current = res.question;
+        // Enviar pista críptica a equipos con CARTA OSCURA antes de la pregunta
+        const pistaEquipos = Object.entries(casinoCardBetsRef.current)
+          .filter(([, v]) => v.card === 'CARTA OSCURA');
+        for (const [tid] of pistaEquipos) {
+          supabase.channel(`private-team-${tid}`)
+            .send({ type: 'broadcast', event: 'pista_oscura', payload: { pista: res.question.pista_criptica } });
+        }
+        // Pequeño delay para que la pista llegue antes que la pregunta
+        await new Promise((r) => setTimeout(r, 300));
+        level3ChannelRef.current?.send({
+          type: 'broadcast', event: 'nivel3_ronda',
+          payload: { question: res.question },
+        });
+      }
+    } catch { /* fallback silencioso */ }
+  };
+
   // ── Efecto 1: TRANSICIONES de estado (no maneja timers, solo lógica) ───────
   useEffect(() => {
     if (!session || session.status !== 'level3' || !casinoAutomated) return;
@@ -721,20 +850,10 @@ function HostSession({ sessionId }: { sessionId: string }) {
     // Repartir cartas al inicio
     if (casinoRound === 0 && casinoStatus === 'idle') {
       setCasinoStatus('seeding');
+      setCasinoBetsCount(0);
+      casinoCardBetsRef.current = {};
       setTimeout(async () => {
-        try {
-          const res = await fetch('/api/nivel3/cartas', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId }),
-          }).then((r) => r.json());
-          if (res.ok && res.teamCards) {
-            Object.entries(res.teamCards).forEach(([tid, cards]) => {
-              supabase.channel(`private-team-${tid}`)
-                .send({ type: 'broadcast', event: 'cartas', payload: { cards } });
-            });
-          }
-        } catch { /* backend offline — seguimos */ }
+        await dealCards();
         setCasinoRound(1);
         setCasinoStatus('cards');
         setCasinoTimer(30);
@@ -753,25 +872,8 @@ function HostSession({ sessionId }: { sessionId: string }) {
     // Entramos a answering → generar pregunta UNA sola vez
     if (casinoStatus === 'answering' && !questionSentRef.current) {
       questionSentRef.current = true;
-      casinoVotesRef.current = {}; // limpiar votos de ronda anterior
-      const topics = ['langchain', 'react', 'tool_calling', 'comparativa'];
-      const topic = topics[(casinoRound - 1) % topics.length];
-      fetch('/api/nivel3/pregunta', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic }),
-      })
-        .then((r) => r.json())
-        .then((res) => {
-          if (res.ok && res.question) {
-            casinoQuestionRef.current = res.question; // guardar para settle
-            level3ChannelRef.current?.send({
-              type: 'broadcast', event: 'nivel3_ronda',
-              payload: { question: res.question },
-            });
-          }
-        })
-        .catch(() => {});
+      casinoVotesRef.current = {};
+      sendQuestion(casinoRound);
       return;
     }
 
@@ -782,7 +884,7 @@ function HostSession({ sessionId }: { sessionId: string }) {
       level3ChannelRef.current?.send({ type: 'broadcast', event: 'spin_wheel', payload: {} });
 
       setTimeout(() => {
-        // Liquidar tokens con la pregunta y votos acumulados
+        // Liquidar tokens
         const q = casinoQuestionRef.current;
         const votes = casinoVotesRef.current;
         if (q && Object.keys(votes).length > 0) {
@@ -797,7 +899,6 @@ function HostSession({ sessionId }: { sessionId: string }) {
             .then((r) => r.json())
             .then((res) => {
               if (res.ok) {
-                // Broadcast resultados para que los equipos los vean
                 level3ChannelRef.current?.send({
                   type: 'broadcast', event: 'settle_results',
                   payload: { results: res.results, correct: q.respuesta_correcta },
@@ -813,17 +914,21 @@ function HostSession({ sessionId }: { sessionId: string }) {
         setTimeout(() => {
           if (casinoRound < 4) {
             questionSentRef.current = false;
+            setCasinoBetsCount(0);
+            casinoCardBetsRef.current = {};
             setCasinoRound((r) => r + 1);
             setCasinoStatus('cards');
             setCasinoTimer(30);
+            // Re-enviar cartas a todos los equipos para que entren en fase cards
+            sendCardsToTeams(casinoTeamCardsRef.current);
           } else {
             setCasinoStatus('idle');
-            level3ChannelRef.current?.send({ type: 'broadcast', event: 'honrar_o_traicionar', payload: {} });
           }
         }, 10000);
       }, 8000);
     }
   // casinoTimer en deps para detectar cuando llega a 0
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.status, casinoRound, casinoStatus, casinoAutomated, casinoTimer, sessionId]);
 
   // ── Efecto 2: COUNTDOWN — separado para que la limpieza siempre funcione ─
@@ -831,90 +936,9 @@ function HostSession({ sessionId }: { sessionId: string }) {
     if (!session || session.status !== 'level3' || !casinoAutomated) return;
     if (!['cards', 'answering'].includes(casinoStatus) || casinoTimer <= 0) return;
 
-    // Un único setInterval por render; el cleanup lo cancela siempre
     const id = setInterval(() => setCasinoTimer((t) => t - 1), 1000);
     return () => clearInterval(id);
-  // Re-ejecutar solo cuando cambia el status o el timer (1 vez/s durante countdown)
   }, [session?.status, casinoStatus, casinoTimer, casinoAutomated]);
-
-  // Track active question during level3 (not used in auto mode but kept for consistency)
-  useEffect(() => {
-    if (!session || session.status !== 'level3') { setActiveQuestion3(null); return }
-
-    const loadQ3 = () =>
-      supabase
-        .from('level3_questions')
-        .select('*')
-        .eq('session_id', sessionId)
-        .is('revealed_at', null)
-        .order('question_number')
-        .limit(1)
-        .single()
-        .then(({ data }) => setActiveQuestion3(data ?? null))
-
-    loadQ3()
-
-    const channel = supabase.channel(`host-q3-${sessionId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'level3_questions',
-        filter: `session_id=eq.${sessionId}`,
-      }, () => { loadQ3() })
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
-  }, [session, sessionId])
-
-  // Subscribe to final_votes when final question is revealed
-  useEffect(() => {
-    if (!activeQuestion3?.is_final || !activeQuestion3.revealed_at) return
-
-    const votesChannel = supabase.channel(`host-final-votes-${activeQuestion3.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'final_votes',
-        filter: `question_id=eq.${activeQuestion3.id}`,
-      }, (payload) => {
-        const votedId = (payload.new as { voted_team_id: string }).voted_team_id
-        setFinalVoteCounts(prev => ({ ...prev, [votedId]: (prev[votedId] ?? 0) + 1 }))
-      })
-      .subscribe()
-
-    // Load existing votes
-    supabase
-      .from('final_votes')
-      .select('voted_team_id')
-      .eq('question_id', activeQuestion3.id)
-      .then(({ data }) => {
-        const counts: Record<string, number> = {}
-        for (const v of data ?? []) {
-          counts[v.voted_team_id] = (counts[v.voted_team_id] ?? 0) + 1
-        }
-        setFinalVoteCounts(counts)
-      })
-
-    return () => { supabase.removeChannel(votesChannel) }
-  }, [activeQuestion3?.id, activeQuestion3?.is_final, activeQuestion3?.revealed_at])
-
-  const revealCurrentQuestion3 = async () => {
-    if (revealingQ3 || !activeQuestion3) return
-    setRevealingQ3(true)
-    await fetch('/api/reveal-level3', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ questionId: activeQuestion3.id }),
-    })
-    setRevealingQ3(false)
-  }
-
-  const awardFinalVote = async () => {
-    if (awardingVote || !activeQuestion3) return
-    setAwardingVote(true)
-    await fetch('/api/award-final-vote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ questionId: activeQuestion3.id }),
-    })
-    setAwardingVote(false)
-  }
 
   const revealCurrentQuestion2 = async () => {
     if (revealingQ2 || !activeQuestion2) return
@@ -1001,18 +1025,15 @@ function HostSession({ sessionId }: { sessionId: string }) {
       activeQuestion2={activeQuestion2}
       onRevealQ2={revealCurrentQuestion2}
       revealingQ2={revealingQ2}
-      activeQuestion3={activeQuestion3}
-      onRevealQ3={revealCurrentQuestion3}
-      revealingQ3={revealingQ3}
-      finalVoteCounts={finalVoteCounts}
       casinoAutomated={casinoAutomated}
       casinoRound={casinoRound}
       casinoStatus={casinoStatus}
       casinoTimer={casinoTimer}
+      casinoBetsCount={casinoBetsCount}
       setCasinoAutomated={setCasinoAutomated}
       level3ChannelRef={level3ChannelRef}
-      onAwardFinalVote={awardFinalVote}
-      awardingVote={awardingVote} />
+      onDealCards={dealCards}
+      onSendQuestion={sendQuestion} />
   )
 }
 

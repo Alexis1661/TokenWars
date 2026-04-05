@@ -13,6 +13,8 @@ export interface PlayingCardProps {
   disabled?: boolean
   /** ms de delay antes de auto-flip (para stagger entre cartas) */
   flipDelay?: number
+  width?: number
+  height?: number
 }
 
 export function PlayingCard({
@@ -24,13 +26,15 @@ export function PlayingCard({
   onClick,
   disabled = false,
   flipDelay = 0,
+  width = 120,
+  height = 172,
 }: PlayingCardProps) {
   return (
     <div
       onClick={() => !disabled && revealed && onClick()}
       style={{
-        width: 120,
-        height: 172,
+        width,
+        height,
         perspective: '900px',
         cursor: disabled || !revealed ? 'default' : 'pointer',
         flexShrink: 0,
@@ -72,7 +76,7 @@ export function PlayingCard({
                 'repeating-linear-gradient(45deg, rgba(255,215,0,0.04) 0px, rgba(255,215,0,0.04) 1px, transparent 1px, transparent 8px)',
             }}
           />
-          <span style={{ fontSize: '2.2rem', opacity: 0.5 }}>🂠</span>
+          <div style={{ width: 32, height: 44, border: '1.5px solid rgba(255,215,0,0.3)', borderRadius: 4, opacity: 0.3 }} />
           <span
             style={{
               fontFamily: "'Orbitron', sans-serif",
@@ -177,24 +181,6 @@ export function PlayingCard({
             {description}
           </span>
 
-          {selected && (
-            <div
-              style={{
-                marginTop: 4,
-                background: 'rgba(255,215,0,0.15)',
-                border: '1px solid #FFD700',
-                borderRadius: 4,
-                padding: '2px 6px',
-                color: '#FFD700',
-                fontSize: '0.45rem',
-                fontFamily: "'Orbitron', sans-serif",
-                fontWeight: 700,
-                letterSpacing: '0.08em',
-              }}
-            >
-              ✓ ACTIVA
-            </div>
-          )}
         </div>
       </motion.div>
     </div>

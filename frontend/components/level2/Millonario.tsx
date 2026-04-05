@@ -440,8 +440,8 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
             {jokerUsed === 'spy' && spyTarget && !revealed && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-xl text-center font-mono text-sm text-blue-300">
                 {spyAnswer
-                  ? `🎯 El rival ha marcado: ${spyAnswer.toUpperCase()}${spyTargetLocked ? ' (BLOQUEADO)' : ''}`
-                  : '❓ El rival aún no decide.'}
+                  ? `El rival ha marcado: ${spyAnswer.toUpperCase()}${spyTargetLocked ? ' (BLOQUEADO)' : ''}`
+                  : 'El rival aún no decide.'}
               </motion.div>
             )}
           </AnimatePresence>
@@ -484,7 +484,7 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
                     return (
                       <div key={t.id} className={`p-3 rounded-xl border ${isMe ? 'bg-blue-900/20 border-blue-500/40' : 'bg-slate-800/30 border-slate-700'}`}>
                         <p className={`text-[10px] mb-1 truncate ${isMe ? 'text-blue-300 font-bold' : 'text-slate-400'}`}>{isMe && '▸ '}{t.name}</p>
-                        <p className={`text-lg font-orbitron ${!ans ? 'text-slate-600' : correct ? 'text-green-500' : 'text-red-500'}`}>{!ans ? '--' : `${ans.toUpperCase()} ${correct ? '✓' : '✗'}`}</p>
+                        <p className={`text-lg font-orbitron ${!ans ? 'text-slate-600' : correct ? 'text-green-500' : 'text-red-500'}`}>{!ans ? '--' : `${ans.toUpperCase()} ${correct ? '(OK)' : '(X)'}`}</p>
                       </div>
                     )
                   })}

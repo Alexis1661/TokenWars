@@ -89,11 +89,13 @@ All clients sync via Supabase Realtime subscriptions
 
 ### Level Components
 
-| Level | Component | File |
-|-------|-----------|------|
-| Level 1 | `TypeOrDie` | `frontend/components/level1/TypeOrDie.tsx` |
-| Level 2 | `Millonario` | `frontend/components/level2/Millonario.tsx` |
-| Level 3 | `LaTraicion` | `frontend/components/level3/LaTraicion.tsx` |
+| Level | Component | File | Props |
+|-------|-----------|------|-------|
+| Level 1 | `TypeOrDie` | `frontend/components/level1/TypeOrDie.tsx` | round, team, allTeams |
+| Level 2 | `Millonario` | `frontend/components/level2/Millonario.tsx` | question, team, allTeams, revealed, correctAnswers |
+| Level 3 | `LaTraicion` | `frontend/components/level3/LaTraicion.tsx` | team, allTeams |
+
+**Level 3 is self-managing** — `LaTraicion` receives no question prop. It subscribes internally to Supabase Broadcast channels and manages its own state machine (see Level 3 Architecture below). Do not pass `question` or `revealed` to it.
 
 ### Next.js API Routes (`frontend/app/api/`)
 
@@ -105,8 +107,8 @@ All clients sync via Supabase Realtime subscriptions
 - `reveal-question` — sets `revealed_at` on a `level2_questions` row, calculates `is_correct` and awards tokens via `transfer_tokens` RPC
 - `reconnect` — reconnects a device to an existing team
 - `use-joker` — immediately charges joker cost via `transfer_tokens` (L2); token balance updates via Realtime
-- `reveal-level3` — marks `revealed_at`, evaluates correctness, settles all bets via `transfer_tokens` RPC
-- `award-final-vote` — counts `final_votes`, awards +300T to winner (tie-break: lowest balance)
+- `reveal-level3` — legacy route; Level 3 settlement now handled by host broadcast (`settle_results` event)
+- `award-final-vote` — legacy route; Level 3 final decision handled by host broadcast (`honrar_o_traicionar` event)
 
 ### Backend Generators (`backend-ai/generators/`)
 
@@ -119,7 +121,31 @@ Token transfers use the Supabase `transfer_tokens` PostgreSQL function (optimist
 
 ### Supabase Realtime
 
-The following tables have Realtime enabled: `game_sessions`, `teams`, `level1_rounds`, `level1_submissions`, `level2_questions`, `level2_answers`, `level3_questions`, `level3_answers`, `level3_bets`, `final_votes`. Frontend subscriptions use `supabase.channel()` with `postgres_changes`.
+Tables with `postgres_changes` subscriptions: `game_sessions`, `teams`, `level1_rounds`, `level1_submissions`, `level2_questions`, `level2_answers`.
+
+**Level 3 uses Supabase Broadcast** (not postgres_changes):
+- `nivel3_global` — host → all teams: `nivel3_ronda`, `spin_wheel`, `revealed`, `settle_results`, `honrar_o_traicionar`, `voto_castigo`, `resultado_castigo`
+- `private-team-{teamId}` — host → specific team: `cartas`, `pista_oscura`
+- `nivel3_host` — teams → host: `bet_confirmed`, `team_voted`, `decision_final`, `voto_castigo`
+
+### Level 3 Architecture (Casino de la Traición)
+
+Level 3 is broadcast-driven and managed entirely by the host's croupier system. The host toggles between AUTOMÁTICO/MANUAL mode for 4 rounds.
+
+**Team phase machine:** `idle` → `cards` → `answering` → `spinning` → `revealed` → `final_decision` → `voting_punishment` → `punishment_results`
+
+**Special cards** (dealt per team at round start, modifiers applied during settle):
+
+| Card | Effect |
+|------|--------|
+| DOBLAR O NADA | ×2 if correct, −100% if wrong |
+| RED DE SEGURIDAD | −50% if wrong |
+| TRANSFERENCIA | +100T extra if correct |
+| SEGURO CRUZADO | +150T extra if both allies correct |
+| CARTA OSCURA | Cryptic hint before question |
+| FAROL | ×3 if correct |
+
+**New UI components:** `SpinWheel` (ref-based, `spinTo(index)` called on `spin_wheel` broadcast) and `PlayingCard` (flip animation, staggered reveal) in `frontend/components/ui/`.
 
 ## Code Style
 
@@ -138,7 +164,7 @@ const G = {
 
 **CSS classes:** Usar las clases `cup-*` definidas en `globals.css` (`cup-panel`, `cup-btn`, `cup-btn-gold`, `cup-badge`) en lugar de estilos inline para elementos estructurales.
 
-**Componentes de nivel:** Cada nivel recibe sus datos como props desde `play/[teamId]/page.tsx`. Usar `key={activeItem.id}` al renderizar para forzar remount completo al cambiar de ronda/pregunta.
+**Componentes de nivel:** L1 y L2 reciben sus datos como props desde `play/[teamId]/page.tsx`. Usar `key={activeItem.id}` al renderizar para forzar remount completo al cambiar de ronda/pregunta. L3 (`LaTraicion`) es autónomo — no recibe datos externos, gestiona su propio state via broadcasts.
 
 **Fonts:** `'Orbitron'` para títulos/números, `'Exo 2'` para texto, `monospace` para contenido tipo terminal.
 

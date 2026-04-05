@@ -1,6 +1,6 @@
 'use client'
-import { motion } from 'framer-motion'
-import { useParams } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useParams, useRouter } from 'next/navigation'
 import { usePublicGameData } from '@/hooks/usePublicGameData'
 import { useTeamData } from '@/hooks/useTeamData'
 import { Scoreboard } from '@/components/scoreboard/Scoreboard'
@@ -14,9 +14,11 @@ import type { Level1Round, Level2Question, Level3Question, AnswerOption } from '
 
 export default function PlayPage() {
   const { teamId } = useParams<{ teamId: string }>()
+  const router = useRouter()
   const { team: teamBase, transactions, isLoading: teamLoading } = useTeamData(teamId)
   const sessionId = teamBase?.session_id ?? ''
   const { session, teams, isLoading: sessionLoading } = usePublicGameData(sessionId)
+  const [showExitModal, setShowExitModal] = useState(false)
   // Usar el equipo del array público para tener token_balance siempre actualizado
   // (usePublicGameData recibe los updates de Realtime correctamente)
   const team = teams.find((t) => t.id === teamId) ?? teamBase
@@ -157,10 +159,54 @@ export default function PlayPage() {
 
   const lastTx = transactions[0]
   const delta = lastTx ? lastTx.amount : undefined
-  const hasScoreboard = session.status !== 'finished' && session.status !== 'lobby' && session.status !== 'level2'
+  const hasScoreboard = session.status !== 'finished' && session.status !== 'lobby' && session.status !== 'level2' && session.status !== 'level3'
 
   return (
     <main className="min-h-screen cup-stars-bg" style={{ background: 'var(--cup-bg)', paddingBottom: hasScoreboard ? 180 : 0 }}>
+
+      {/* Modal de confirmación de salida */}
+      <AnimatePresence>
+        {showExitModal && (
+          <motion.div
+            key="exit-modal"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: 'rgba(0,0,0,0.85)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.85, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.85, y: 16 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 22 }}
+              className="cup-panel p-6 w-full max-w-sm flex flex-col gap-5"
+            >
+              <div className="text-center">
+                <div className="text-3xl mb-2">!</div>
+                <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-red)', fontSize: '1.4rem', lineHeight: 1 }}>
+                  ¿Salir del juego?
+                </h2>
+                <p className="mt-2 text-sm" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Exo 2', sans-serif" }}>
+                  Perderás la vista del equipo. Podrás volver a conectarte desde <strong style={{ color: 'var(--cup-cream)' }}>/join</strong> usando tu nombre de equipo.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowExitModal(false)}
+                  className="cup-btn flex-1 text-base py-3"
+                  style={{ background: 'var(--cup-bg3)', color: 'var(--cup-cream)' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => router.push('/join')}
+                  className="cup-btn flex-1 text-base py-3"
+                  style={{ background: 'var(--cup-red)', color: 'var(--cup-cream)' }}
+                >
+                  Salir
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Header */}
       <header className="flex justify-between items-center px-4 py-3 sticky top-0 z-10"
@@ -172,11 +218,21 @@ export default function PlayPage() {
             <h1 style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-cream)', fontSize: '1.3rem', lineHeight: 1 }}>{team.name}</h1>
           </div>
         </div>
-        <TokenBadge balance={team.token_balance} delta={delta} />
+        <div className="flex items-center gap-3">
+          <TokenBadge balance={team.token_balance} delta={delta} />
+          <button
+            onClick={() => setShowExitModal(true)}
+            className="cup-btn text-xs px-3 py-2"
+            style={{ background: 'rgba(180,30,30,0.15)', border: '1px solid var(--cup-red)', color: 'var(--cup-red)' }}
+            title="Salir del juego"
+          >
+            Salir
+          </button>
+        </div>
       </header>
 
       {/* Contenido */}
-      <div className={session.status === 'level1' ? '' : 'p-4'}>
+      <div className={session.status === 'level1' || session.status === 'level3' ? '' : 'p-4'}>
         {session.status === 'lobby' && <LobbyScreen hostCode={session.host_code} />}
         {session.status === 'level1' && activeRound && <TypeOrDie key={activeRound.id} round={activeRound} teamId={team.id} />}
         {session.status === 'level1' && !activeRound && <WaitingScreen message="Esperando la próxima ronda..." />}

@@ -8,7 +8,7 @@ export function Scoreboard({ teams, highlightTeamId }: { teams: Team[]; highligh
   return (
     <div className="w-full space-y-2">
       <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '1.4rem', letterSpacing: '0.15em', textAlign: 'center' }}>
-        ★ SCOREBOARD ★
+        SCOREBOARD
       </h2>
 
       <AnimatePresence>

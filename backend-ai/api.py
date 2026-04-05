@@ -183,9 +183,8 @@ async def assign_l3_cards(body: dict):
         "DOBLAR O NADA",
         "RED DE SEGURIDAD",
         "TRANSFERENCIA",
-        "SEGURO CRUZADO",
         "CARTA OSCURA",
-        "FAROL"
+        "FAROL",
     ]
     
     team_cards = {}
@@ -209,74 +208,76 @@ def settle_l3_tokens(body: SettleRequest):
     """Liquida la ronda del casino calculando ganancias y perdidas según la carta y apuesta."""
     from services.supabase_service import get_client
     client = get_client()
-    
+
     correct = body.correct_option
     bets = body.team_bets
-    
-    # Pre-calcular apuestas para TRANSFERENCIA
-    max_bet = max([b.get("bet", 0) for b in bets]) if bets else 0
-    highest_bet_teams = [b["team_id"] for b in bets if b["bet"] == max_bet]
-    
+
+    # IDs de equipos con TRANSFERENCIA que acertaron (para descontar al mayor apostador)
+    transferencia_winners: list[str] = []
+
     # Procesar cada apuesta
-    results = []
-    
+    results: list[dict] = []
+
     for b in bets:
         tid = b.get("team_id")
         opt = b.get("option")
         bet_amount = b.get("bet", 0)
         card = b.get("card")
-        
+
         is_correct = (opt == correct)
         tokens_earned = 0
-        
+
         if card == "DOBLAR O NADA":
-            if is_correct:
-                tokens_earned = bet_amount * 2
-            else:
-                tokens_earned = -bet_amount
+            tokens_earned = bet_amount * 2 if is_correct else -bet_amount
         elif card == "RED DE SEGURIDAD":
-            if is_correct:
-                tokens_earned = bet_amount
-            else:
-                tokens_earned = -int(bet_amount / 2)
+            tokens_earned = bet_amount if is_correct else -int(bet_amount / 2)
         elif card == "FAROL":
-            # Gana el triple si acierta
-            if is_correct:
-                tokens_earned = bet_amount * 3
-            else:
-                tokens_earned = -bet_amount
+            tokens_earned = bet_amount * 3 if is_correct else -bet_amount
         elif card == "TRANSFERENCIA":
-            # si acierta roba 100 del que más apostó
             if is_correct:
                 tokens_earned = bet_amount + 100
-                # Descontaremos al highest_bet_team más tarde (o simplificamos aplicándolo direct)
-            else:
-                tokens_earned = -bet_amount
-        elif card == "SEGURO CRUZADO":
-            # Requiere otro equipo, lo simplificamos a dar +150 extras si acertó
-            if is_correct:
-                tokens_earned = bet_amount + 150
+                transferencia_winners.append(tid)
             else:
                 tokens_earned = -bet_amount
         else:
-            # Apuesta normal (o CARTA OSCURA que solo daba pista antes)
-            if is_correct:
-                tokens_earned = bet_amount
-            else:
-                tokens_earned = -bet_amount
+            # Apuesta normal (incluye CARTA OSCURA — solo daba pista, sin modificador)
+            tokens_earned = bet_amount if is_correct else -bet_amount
 
-        # Ejecutar transferencia en BDD
         try:
             client.rpc("transfer_tokens", {
                 "p_team_id": tid,
                 "p_amount": tokens_earned,
                 "p_reason": f"l3_bet_settled_{card or 'none'}",
                 "p_level": "3",
-                "p_ref_id": tid, # Un identificador (podemos usar el question id si se enviara)
+                "p_ref_id": tid,
             }).execute()
             results.append({"team_id": tid, "earned": tokens_earned})
         except Exception as e:
             print(f"Error transferring to {tid}: {e}")
+
+    # Post-proceso TRANSFERENCIA: descontar 100T del mayor apostador (excluyendo ganadores TRANSFERENCIA)
+    if transferencia_winners and bets:
+        other_bets = [b for b in bets if b.get("team_id") not in transferencia_winners]
+        if other_bets:
+            max_bet_amount = max(b.get("bet", 0) for b in other_bets)
+            for b in other_bets:
+                if b.get("bet", 0) == max_bet_amount:
+                    target_tid = b["team_id"]
+                    try:
+                        client.rpc("transfer_tokens", {
+                            "p_team_id": target_tid,
+                            "p_amount": -100,
+                            "p_reason": "l3_transferencia_robado",
+                            "p_level": "3",
+                            "p_ref_id": target_tid,
+                        }).execute()
+                        # Actualizar el earned en results
+                        for r in results:
+                            if r["team_id"] == target_tid:
+                                r["earned"] -= 100
+                    except Exception as e:
+                        print(f"Error applying TRANSFERENCIA deduction to {target_tid}: {e}")
+                    break  # Solo al primero con max apuesta
 
     return {"ok": True, "results": results}
 
