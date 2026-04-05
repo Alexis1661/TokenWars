@@ -16,8 +16,6 @@ const G = {
   green:   '#22c55e',
 }
 
-const QUESTION_SECONDS = 30
-
 const JOKERS: { type: JokerType; label: string; cost: number }[] = [
   { type: 'fifty_fifty',  label: '50 / 50',        cost: 80  },
   { type: 'call_teacher', label: 'Llamar al Profe', cost: 120 },
@@ -30,14 +28,28 @@ function optionText(q: Level2Question, opt: AnswerOption): string {
   return { a: q.option_a, b: q.option_b, c: q.option_c, d: q.option_d }[opt]
 }
 
-// ─── Intro (solo pregunta 1) ──────────────────────────────
-function IntroScreen({ questionNumber, onDone }: { questionNumber: number; onDone: () => void }) {
-  const [cd, setCd] = useState(15)
+// ─── Intro (Lore) ──────────────────────────────
+interface IntroProps {
+  questionNumber: number
+  startedAt: number
+  duration: number
+  onDone: () => void
+}
+
+function IntroScreen({ questionNumber, startedAt, duration, onDone }: IntroProps) {
+  const [cd, setCd] = useState(duration)
+
   useEffect(() => {
-    if (cd <= 0) { onDone(); return }
-    const id = setTimeout(() => setCd(n => n - 1), 1000)
-    return () => clearTimeout(id)
-  }, [cd, onDone])
+    const tick = () => {
+      const elapsed = (Date.now() - startedAt) / 1000
+      const left = Math.max(0, Math.ceil(duration - elapsed))
+      setCd(left)
+      if (left <= 0) onDone()
+    }
+    tick()
+    const id = setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [startedAt, duration, onDone])
 
   return (
     <motion.div
@@ -89,7 +101,7 @@ function IntroScreen({ questionNumber, onDone }: { questionNumber: number; onDon
                     stroke={G.primary} strokeDasharray={2 * Math.PI * 32}
                     initial={{ strokeDashoffset: 0 }}
                     animate={{ strokeDashoffset: 2 * Math.PI * 32 }}
-                    transition={{ duration: 15, ease: 'linear' }}
+                    transition={{ duration: duration, ease: 'linear' }}
                   />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -113,6 +125,9 @@ function IntroScreen({ questionNumber, onDone }: { questionNumber: number; onDon
   )
 }
 
+const INTRO_SECONDS = 15
+const QUESTION_SECONDS = 30
+
 // ─── Componente principal ─────────────────────────────────
 interface MillonarioProps {
   question: Level2Question
@@ -123,7 +138,7 @@ interface MillonarioProps {
 }
 
 export function Millonario({ question, team, allTeams, revealed, correctAnswers }: MillonarioProps) {
-  const [phase, setPhase] = useState<'intro' | 'playing' | 'locked'>('intro')
+  const [phase, setPhase] = useState<'waiting' | 'intro' | 'playing' | 'locked'>('waiting')
   const [selected, setSelected] = useState<AnswerOption | null>(null)
   const [jokerUsed, setJokerUsed] = useState<JokerType | null>(null)
   const [tokensSpent, setTokensSpent] = useState(0)
@@ -136,11 +151,36 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
 
   const handleLockRef = useRef<() => void>(() => {})
 
+  // SINCRONIZACIÓN DE FASE POR TIEMPO
   useEffect(() => {
-    if (question.question_number !== 1) setPhase('playing')
-  }, [question.question_number])
+    if (!question.started_at) {
+      setPhase('waiting')
+      return
+    }
+
+    const tStart = new Date(question.started_at).getTime()
+    const isFirstQuestion = question.question_number === 1
+    const introDuration = isFirstQuestion ? INTRO_SECONDS : 0 // Saltarse intro si no es la pregunta 1
+
+    const checkPhase = () => {
+      const elapsed = (Date.now() - tStart) / 1000
+      if (elapsed < 0) setPhase('waiting')
+      else if (isFirstQuestion && elapsed < introDuration) {
+        setPhase('intro')
+      } else if (elapsed < (introDuration + QUESTION_SECONDS)) {
+        if (phase !== 'locked') setPhase('playing')
+      } else {
+        setPhase('locked')
+      }
+    }
+
+    checkPhase()
+    const id = setInterval(checkPhase, 500)
+    return () => clearInterval(id)
+  }, [question.started_at, question.question_number, phase])
 
   const handleLock = useCallback(async () => {
+    // Permitir bloquear si estamos en fase playing
     if (phase !== 'playing' || revealed) return
     setPhase('locked')
 
@@ -174,6 +214,7 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
   }, [revealed])
 
   const handleJoker = async (joker: JokerType) => {
+    // No permitir comodines fuera de fase playing
     if (jokerUsed || phase !== 'playing' || revealed) return
     const def = JOKERS.find(j => j.type === joker)!
     if (team.token_balance < def.cost) return
@@ -214,17 +255,22 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
       body: JSON.stringify({ teamId: team.id, questionId: question.id, jokerType: 'spy', cost: 150 }),
     })
 
+    // Fetch inicial
     const { data } = await supabase
       .from('level2_answers')
       .select('selected_option, is_locked')
       .eq('question_id', question.id)
       .eq('team_id', tid)
       .maybeSingle()
-    setSpyAnswer((data?.selected_option as AnswerOption) ?? null)
-    setSpyTargetLocked(data?.is_locked ?? false)
+    
+    if (data) {
+      setSpyAnswer((data.selected_option as AnswerOption) ?? null)
+      setSpyTargetLocked(data.is_locked ?? false)
+    }
 
+    // Suscripción Realtime para el espía
     const channel = supabase
-      .channel(`spy-${question.id}-${tid}`)
+      .channel(`spy-q${question.id}-t${tid}`)
       .on(
         'postgres_changes',
         {
@@ -234,13 +280,17 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
           filter: `question_id=eq.${question.id}`,
         },
         (payload: any) => {
-          if (payload.new?.team_id === tid) {
-            setSpyAnswer((payload.new.selected_option as AnswerOption) ?? null)
-            setSpyTargetLocked(payload.new.is_locked ?? false)
+          // Filtrar por el equipo objetivo de forma segura dentro del callback
+          const newRow = payload.new;
+          if (newRow && newRow.team_id === tid) {
+            setSpyAnswer((newRow.selected_option as AnswerOption) ?? null)
+            setSpyTargetLocked(newRow.is_locked ?? false)
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log("Spy subscription status:", status);
+      })
 
     spyChannelRef.current = channel
   }
@@ -267,8 +317,14 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
       </div>
 
       <AnimatePresence>
-        {phase === 'intro' && question.question_number === 1 && (
-          <IntroScreen key="intro" questionNumber={question.question_number} onDone={() => setPhase('playing')} />
+        {phase === 'intro' && question.started_at && (
+          <IntroScreen 
+            key="intro" 
+            questionNumber={question.question_number} 
+            startedAt={new Date(question.started_at).getTime()}
+            duration={INTRO_SECONDS}
+            onDone={() => setPhase('playing')} 
+          />
         )}
       </AnimatePresence>
 
@@ -284,6 +340,21 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
               </div>
               <button onClick={() => setShowSpyPicker(false)} className="mt-4 text-slate-500 text-xs">Cancelar</button>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {phase === 'waiting' && !revealed && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-8 text-center bg-black/80 backdrop-blur-sm"
+          >
+            <div className="w-16 h-16 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mb-6" />
+            <h2 className="text-2xl font-bold text-yellow-500 mb-2 font-orbitron">PREPARANDO PREGUNTA {question.question_number}</h2>
+            <p className="text-white/60 font-mono text-sm max-w-sm">Sincronizando con el servidor para garantizar el juego limpio...</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -318,7 +389,7 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
             {phase === 'playing' && !revealed && (
               <Timer 
                 seconds={QUESTION_SECONDS} 
-                startedAt={question.started_at ? new Date(question.started_at).getTime() : undefined} 
+                startedAt={question.started_at ? new Date(question.started_at).getTime() + (INTRO_SECONDS * 1000) : undefined} 
                 onExpire={() => handleLockRef.current?.()} 
               />
             )}

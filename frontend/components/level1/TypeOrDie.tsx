@@ -57,17 +57,26 @@ const ROUND_LORE: Record<number, { title: string, desc: string, highlight: strin
   }
 }
 
-// ─── Pantalla de introducción (5 s) ───────────────────────
-function IntroScreen({ round, onDone }: { round: Level1Round; onDone: () => void }) {
-  const [countdown, setCountdown] = useState(INTRO_SECONDS)
+// ─── Pantalla de introducción (15 s) ───────────────────────
+function IntroScreen({ round, startedAt, duration, onDone }: { 
+  round: Level1Round; 
+  startedAt: number;
+  duration: number;
+  onDone: () => void 
+}) {
+  const [countdown, setCountdown] = useState(duration)
 
   useEffect(() => {
-    if (countdown <= 0) { onDone(); return }
-    const id = setTimeout(() => setCountdown(n => n - 1), 1000)
-    return () => clearTimeout(id)
-  }, [countdown, onDone])
-
-  const isReact = round.output_type === 'react'
+    const tick = () => {
+      const elapsed = (Date.now() - startedAt) / 1000
+      const left = Math.max(0, Math.ceil(duration - elapsed))
+      setCountdown(left)
+      if (left <= 0) onDone()
+    }
+    tick()
+    const id = setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [startedAt, duration, onDone])
 
   return (
     <motion.div
@@ -107,7 +116,7 @@ function IntroScreen({ round, onDone }: { round: Level1Round; onDone: () => void
               strokeDasharray={2 * Math.PI * 32}
               initial={{ strokeDashoffset: 0 }}
               animate={{ strokeDashoffset: 2 * Math.PI * 32 }}
-              transition={{ duration: INTRO_SECONDS, ease: 'linear' }}
+              transition={{ duration: duration, ease: 'linear' }}
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
@@ -304,7 +313,6 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
   const [typedText, setTypedText] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [identified, setIdentified] = useState<'react' | 'tool_calling' | null>(null)
-  const [startTime, setStartTime] = useState<number>(0)
   const [shake, setShake] = useState(false)
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [errorKey, setErrorKey] = useState<string | null>(null)
@@ -318,10 +326,25 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
     return () => document.body.classList.remove('no-fluid')
   }, [])
 
-  const handleIntroEnd = useCallback(() => {
-    setStartTime(Date.now())
-    setPhase('playing')
-  }, [])
+  // SINCRONIZACIÓN DE FASE POR TIEMPO
+  useEffect(() => {
+    if (!round.started_at) {
+      setPhase('intro')
+      return
+    }
+
+    const tStart = new Date(round.started_at).getTime()
+    const checkPhase = () => {
+      if (submitted) return // No cambiar fase si ya envió
+      const elapsed = (Date.now() - tStart) / 1000
+      if (elapsed < INTRO_SECONDS) setPhase('intro')
+      else if (phase !== 'results') setPhase('playing')
+    }
+
+    checkPhase()
+    const id = setInterval(checkPhase, 1000)
+    return () => clearInterval(id)
+  }, [round.started_at, submitted, phase])
 
   useEffect(() => {
     if (phase === 'playing') textareaRef.current?.focus()
@@ -345,6 +368,13 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (submitted) return
     const key = e.key
+    
+    // Bloquear correcciones: no pueden borrar ni moverse por el texto
+    if (key === 'Backspace' || key === 'Delete' || key.startsWith('Arrow')) {
+      e.preventDefault()
+      return
+    }
+
     const nextIndex = typedText.length
     const isError = key.length === 1 && nextIndex < target.length && key !== target[nextIndex]
 
@@ -366,13 +396,14 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
     setSubmitted(true)
     setPhase('results')
 
-    const finishTimeMs = Date.now() - startTime
+    const tStart = round.started_at ? new Date(round.started_at).getTime() + (INTRO_SECONDS * 1000) : Date.now()
+    const finishTimeMs = Date.now() - tStart
 
     // Guardar submission
     await supabase.from('level1_submissions').upsert({
       round_id: round.id, team_id: teamId, typed_text: typedText,
       error_count: errorCount,
-      finish_time_ms: isComplete ? finishTimeMs : null,
+      finish_time_ms: isComplete ? Math.max(0, finishTimeMs) : null,
       identified_correctly: identified === round.output_type,
     })
 
@@ -388,21 +419,23 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
       setBreakdown(data.breakdown ?? null)
     } catch { /* silencioso */ }
 
-    // Mostrar resultados 3 segundos y luego terminar la ronda
+    // Mostrar resultados (y luego host decide avanzar o timer global expira)
     setTimeout(() => {
-      fetch('/api/finish-round', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roundId: round.id }),
-      }).catch(() => {})
+      // Anteriormente terminaba la ronda acá, sacado para evitar bugs de corte temprano.
     }, 3000)
-  }, [submitted, startTime, round, teamId, typedText, errorCount, isComplete, identified])
+  }, [submitted, round, teamId, typedText, errorCount, isComplete, identified])
 
   return (
     <>
       <AnimatePresence>
-        {phase === 'intro' && (
-          <IntroScreen key="intro" round={round} onDone={handleIntroEnd} />
+        {phase === 'intro' && round.started_at && (
+          <IntroScreen 
+            key="intro" 
+            round={round} 
+            startedAt={new Date(round.started_at).getTime()}
+            duration={INTRO_SECONDS}
+            onDone={() => setPhase('playing')} 
+          />
         )}
       </AnimatePresence>
 
@@ -476,7 +509,7 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
               <Timer
                 seconds={ROUND_SECONDS}
                 onExpire={handleSubmit}
-                startedAt={round.started_at ? new Date(round.started_at).getTime() : undefined}
+                startedAt={round.started_at ? new Date(round.started_at).getTime() + (INTRO_SECONDS * 1000) : undefined}
               />
             )}
             <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 99, overflow: 'hidden' }}>

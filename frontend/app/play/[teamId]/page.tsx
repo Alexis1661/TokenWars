@@ -85,9 +85,10 @@ export default function PlayPage() {
           filter: `session_id=eq.${session.id}`,
         }, async (payload) => {
           const updated = payload.new as Level2Question
-          if (updated.revealed_at) {
-            setActiveQuestion2(prev => prev?.id === updated.id ? updated : prev)
+          
+          setActiveQuestion2(prev => prev?.id === updated.id ? updated : prev)
 
+          if (updated.revealed_at) {
             const { data: answers } = await supabase
               .from('level2_answers')
               .select('team_id, selected_option')
@@ -190,10 +191,9 @@ export default function PlayPage() {
           />
         )}
         {session.status === 'level2' && !activeQuestion2 && <WaitingScreen message="Esperando la siguiente pregunta..." />}
-        {session.status === 'level3' && activeQuestion3 && (
-          <LaTraicion key={activeQuestion3.id} question={activeQuestion3} team={team} allTeams={teams} revealed={!!activeQuestion3.revealed_at} />
+        {session.status === 'level3' && (
+          <LaTraicion team={team} allTeams={teams} />
         )}
-        {session.status === 'level3' && !activeQuestion3 && <WaitingScreen message="Esperando la siguiente ronda..." />}
         {session.status === 'finished' && (
           <div className="py-12 text-center flex flex-col items-center gap-6">
             <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '2.5rem' }}

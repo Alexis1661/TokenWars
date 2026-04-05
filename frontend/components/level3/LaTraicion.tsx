@@ -1,412 +1,732 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { Timer } from '@/components/ui/Timer'
-import type { Level3Question, AnswerOption, Team } from '@/lib/types'
+import { SpinWheel, SpinWheelRef } from '@/components/ui/SpinWheel'
+import { PlayingCard } from '@/components/ui/PlayingCard'
+import type { Team } from '@/lib/types'
 
 const G = {
-  primary: '#facc15',
-  dim:     '#a3a3a3',
-  border:  'rgba(255,255,255,0.1)',
-  bg:      '#030712',
-  panel:   '#111827',
-  error:   '#f87171',
-  green:   '#4ade80',
+  primary: '#FFD700',
+  dim: '#a3a3a3',
+  border: '#FFD700',
+  bg: '#0a0a0f',
+  panel: '#111827',
+  error: '#8B0000',
+  green: '#4ade80',
 }
 
-const OPTIONS: AnswerOption[] = ['a', 'b', 'c', 'd']
-const BETTING_SECONDS = 15
-const ANSWER_SECONDS = 30
-
-type Phase = 'answering' | 'betting' | 'waiting' | 'revealed' | 'voting'
-
-interface TeamAnswer {
-  team_id: string
-  selected_option: AnswerOption | null
-  open_answer: string | null
-  is_correct: boolean | null
+const CARD_META: Record<string, { emoji: string; description: string; modifier: string }> = {
+  'DOBLAR O NADA':    { emoji: '🔴', description: 'Si acierta gana el doble, si falla pierde TODO lo apostado.',   modifier: '×2 si acierta / −100% si falla' },
+  'RED DE SEGURIDAD': { emoji: '🟡', description: 'Si falla solo pierde la mitad de lo apostado.',                  modifier: '−50% si falla' },
+  'TRANSFERENCIA':    { emoji: '🟠', description: 'Si acierta, roba +100T del equipo que más apostó.',              modifier: '+100T extra si acierta' },
+  'SEGURO CRUZADO':   { emoji: '🟣', description: 'Si tú y el aliado aciertan, ambos ganan +150T extra.',           modifier: '+150T extra si acierta' },
+  'CARTA OSCURA':     { emoji: '⚫', description: 'Recibes una pista críptica antes de ver la pregunta completa.',  modifier: 'pista anticipada' },
+  'FAROL':            { emoji: '🟢', description: 'Si acierta, gana el TRIPLE de lo apostado.',                     modifier: '×3 si acierta' },
 }
 
-interface BetResult {
-  target_team_id: string
-  amount: number
-  won: boolean | null
+interface QuestionPayload {
+  pregunta: string
+  opciones: { A: string; B: string; C: string; D: string }
+  respuesta_correcta: 'A' | 'B' | 'C' | 'D'
+  indice_correcto: number
+  trampa_explicada: string
+  pista_criptica: string
+  tema: string
+  flavor_text: string
 }
+
+function normaliseQuestion(q: any): QuestionPayload {
+  const ops = q.opciones ?? {}
+  return {
+    ...q,
+    respuesta_correcta: (q.respuesta_correcta ?? 'A').toUpperCase() as 'A' | 'B' | 'C' | 'D',
+    opciones: {
+      A: ops.A ?? ops.a ?? '',
+      B: ops.B ?? ops.b ?? '',
+      C: ops.C ?? ops.c ?? '',
+      D: ops.D ?? ops.d ?? '',
+    },
+  }
+}
+
+type Phase =
+  | 'idle'
+  | 'cards'       // cartas repartidas, equipo elige apuesta y carta ANTES de ver la pregunta
+  | 'answering'   // pregunta visible, equipo elige opción en la ruleta
+  | 'spinning'
+  | 'revealed'
+  | 'final_decision'
+  | 'voting_punishment'
+  | 'punishment_results'
 
 interface LaTraicionProps {
-  question: Level3Question
   team: Team
   allTeams: Team[]
-  revealed: boolean
 }
 
-export function LaTraicion({ question, team, allTeams, revealed }: LaTraicionProps) {
-  const [phase, setPhase] = useState<Phase>('answering')
-  const [selectedOption, setSelectedOption] = useState<AnswerOption | null>(null)
-  const [openAnswer, setOpenAnswer] = useState('')
-  const [answerLocked, setAnswerLocked] = useState(false)
-  const [betTarget, setBetTarget] = useState<string | null>(null)
-  const [betAmount, setBetAmount] = useState(50)
-  const [betLocked, setBetLocked] = useState(false)
-  const [teamAnswers, setTeamAnswers] = useState<TeamAnswer[]>([])
-  const [myBet, setMyBet] = useState<BetResult | null>(null)
-  const [voted, setVoted] = useState(false)
+export function LaTraicion({ team, allTeams }: LaTraicionProps) {
+  const [phase, setPhase] = useState<Phase>('idle')
+  const [question, setQuestion] = useState<QuestionPayload | null>(null)
 
-  const maxBet = Math.floor(
-    (question.is_final ? team.token_balance : team.token_balance * 0.5) / 50
-  ) * 50
+  // Apuesta y carta — se fijan en 'cards', se usan en 'answering'
+  const [betAmount, setBetAmount] = useState<number>(50)
+  const [selectedCard, setSelectedCard] = useState<string | null>(null)
+  const [betConfirmed, setBetConfirmed] = useState(false)
 
-  const rivals = allTeams.filter((t) => t.id !== team.id)
+  // Respuesta de la ruleta
+  const [selectedOption, setSelectedOption] = useState<string | null>(null)
+  const [answerConfirmed, setAnswerConfirmed] = useState(false)
 
-  // When revealed flips, fetch all answers + own bet result
+  // Cartas
+  const [myCards, setMyCards] = useState<string[]>([])
+  const [cardsRevealed, setCardsRevealed] = useState(false) // auto-flip tras 1.5s
+  const [betTimer, setBetTimer] = useState(0)
+
+  // Ruleta
+  const wheelRef = useRef<SpinWheelRef>(null)
+  const questionRef = useRef<QuestionPayload | null>(null)
+
+  // Resultado del settle (tokens ganados/perdidos esta ronda)
+  const [settleResult, setSettleResult] = useState<{ earned: number } | null>(null)
+
+  // Fase final
+  const [leaderDecision, setLeaderDecision] = useState<'COMPARTIR' | 'ROBAR' | 'IGNORAR' | null>(null)
+  const [punishmentVotes, setPunishmentVotes] = useState<Record<string, boolean>>({})
+  const [myPunishmentVote, setMyPunishmentVote] = useState<boolean | null>(null)
+
+  const sortedTeams = [...allTeams].sort((a, b) => b.token_balance - a.token_balance)
+  const leaderTeam = sortedTeams[0]
+  const isLeader = leaderTeam?.id === team.id
+
+  // Sync ref
+  useEffect(() => { questionRef.current = question }, [question])
+
+  // Realtime subscriptions — estables durante todo el nivel
   useEffect(() => {
-    if (!revealed) return
-
-    supabase
-      .from('level3_answers')
-      .select('team_id, selected_option, open_answer, is_correct')
-      .eq('question_id', question.id)
-      .then(({ data }) => setTeamAnswers((data ?? []) as TeamAnswer[]))
-
-    supabase
-      .from('level3_bets')
-      .select('target_team_id, amount, won')
-      .eq('question_id', question.id)
-      .eq('bettor_team_id', team.id)
-      .maybeSingle()
-      .then(({ data }) => setMyBet(data as BetResult | null))
-
-    // Subscribe to bet settlement — backend settles async so won may arrive after the fetch above
-    const betChannel = supabase
-      .channel(`bet-result-${question.id}-${team.id}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'level3_bets',
-        filter: `question_id=eq.${question.id}`,
-      }, (payload) => {
-        const row = payload.new as { bettor_team_id: string; target_team_id: string; amount: number; won: boolean }
-        if (row.bettor_team_id === team.id) {
-          setMyBet({ target_team_id: row.target_team_id, amount: row.amount, won: row.won })
+    const privateChannel = supabase
+      .channel(`private-team-${team.id}`)
+      .on('broadcast', { event: 'cartas' }, (payload) => {
+        if (payload.payload?.cards) {
+          setMyCards(payload.payload.cards)
+          setCardsRevealed(false) // empieza boca abajo
+          setPhase('cards')
+          setBetConfirmed(false)
+          setBetTimer(30)
+          // Auto-flip todas las cartas después de 1.5s
+          setTimeout(() => setCardsRevealed(true), 1500)
         }
+      })
+      .on('broadcast', { event: 'pista_oscura' }, (payload) => {
+        // Mostramos en un banner temporal
+        const pista = payload.payload?.pista
+        if (pista) alert(`CARTA OSCURA — Pista: ${pista}`)
       })
       .subscribe()
 
-    setPhase(question.is_final ? 'voting' : 'revealed')
-
-    return () => { supabase.removeChannel(betChannel) }
-  }, [revealed, question.id, question.is_final, team.id])
-
-  const lockAnswer = async () => {
-    if (answerLocked) return
-    setAnswerLocked(true)
-    await supabase.from('level3_answers').upsert({
-      question_id: question.id,
-      team_id: team.id,
-      selected_option: question.is_final ? null : selectedOption,
-      open_answer: question.is_final ? openAnswer : null,
-      is_locked: true,
-      answered_at: new Date().toISOString(),
-    }, { onConflict: 'question_id,team_id' })
-    setPhase('betting')
-  }
-
-  const lockBet = async () => {
-    if (betLocked || !betTarget || betAmount < 50) return
-    setBetLocked(true)
-    await supabase.from('level3_bets').insert({
-      question_id: question.id,
-      bettor_team_id: team.id,
-      target_team_id: betTarget,
-      amount: betAmount,
-    })
-    setPhase('waiting')
-  }
-
-  const submitVote = async (votedTeamId: string) => {
-    if (voted) return
-    setVoted(true)
-    await supabase.from('final_votes').insert({
-      question_id: question.id,
-      voter_team_id: team.id,
-      voted_team_id: votedTeamId,
-    })
-  }
-
-  const optionText = (opt: AnswerOption) =>
-    ({ a: question.option_a, b: question.option_b, c: question.option_c, d: question.option_d }[opt])
-
-  const BetResultBanner = () => {
-    if (!myBet) return null
-    return (
-      <div style={{
-        marginTop: 8, padding: 16, borderRadius: 12, textAlign: 'center',
-        fontFamily: 'monospace', fontSize: '0.875rem',
-        background: myBet.won ? 'rgba(74,222,128,0.1)' : myBet.won === false ? 'rgba(248,113,113,0.1)' : 'rgba(255,255,255,0.05)',
-        border: `1px solid ${myBet.won ? G.green : myBet.won === false ? G.error : G.border}`,
-        color: myBet.won ? G.green : myBet.won === false ? G.error : G.dim,
-      }}>
-        {myBet.won === null
-          ? '⏳ Liquidando apuesta...'
-          : myBet.won
-            ? `🎉 Ganaste ${myBet.amount}T apostando contra ${allTeams.find(t => t.id === myBet.target_team_id)?.name}`
-            : `💸 Perdiste ${myBet.amount}T — ${allTeams.find(t => t.id === myBet.target_team_id)?.name} acertó`
+    const globalChannel = supabase
+      .channel('nivel3_global')
+      .on('broadcast', { event: 'nivel3_ronda' }, (payload) => {
+        const q = normaliseQuestion(payload.payload.question)
+        setQuestion(q)
+        setSelectedOption(null)
+        setAnswerConfirmed(false)
+        setSettleResult(null)
+        setPhase('answering')
+        setBetConfirmed(true) // auto-confirma si no lo hicieron antes
+      })
+      .on('broadcast', { event: 'settle_results' }, (payload) => {
+        const myResult = (payload.payload?.results ?? []).find(
+          (r: { team_id: string; earned: number }) => r.team_id === team.id
+        )
+        if (myResult) setSettleResult({ earned: myResult.earned })
+      })
+      .on('broadcast', { event: 'spin_wheel' }, () => {
+        setPhase('spinning')
+        if (wheelRef.current && questionRef.current) {
+          wheelRef.current.spinTo(questionRef.current.indice_correcto)
         }
-      </div>
-    )
+      })
+      .on('broadcast', { event: 'revealed' }, () => {
+        setTimeout(() => setPhase('revealed'), 1000)
+      })
+      .on('broadcast', { event: 'honrar_o_traicionar' }, () => {
+        setPhase('final_decision')
+      })
+      .on('broadcast', { event: 'voto_castigo' }, (payload) => {
+        const { voter_id, castigar } = payload.payload
+        setPunishmentVotes((prev) => ({ ...prev, [voter_id]: castigar }))
+      })
+      .on('broadcast', { event: 'resultado_castigo' }, () => {
+        setPhase('punishment_results')
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(privateChannel)
+      supabase.removeChannel(globalChannel)
+    }
+  }, [team.id])
+
+  // Countdown timer durante fase 'cards'
+  useEffect(() => {
+    if (phase !== 'cards' || betTimer <= 0) return
+    const id = setInterval(() => setBetTimer((t) => t - 1), 1000)
+    return () => clearInterval(id)
+  }, [phase, betTimer])
+
+  const MIN_BET = 50
+  const maxBet = Math.max(MIN_BET, Math.floor(team.token_balance * 0.4))
+  const canBet = team.token_balance >= MIN_BET
+
+  const confirmBet = async () => {
+    setBetConfirmed(true)
+    await supabase.channel('nivel3_host').send({
+      type: 'broadcast',
+      event: 'bet_confirmed',
+      payload: { team_id: team.id, bet: betAmount, card: selectedCard },
+    })
   }
+
+  const confirmAnswer = async () => {
+    if (!selectedOption) return
+    setAnswerConfirmed(true)
+    await supabase.channel('nivel3_host').send({
+      type: 'broadcast',
+      event: 'team_voted',
+      payload: { team_id: team.id, option: selectedOption, bet: betAmount, card: selectedCard },
+    })
+  }
+
+  const submitLeaderDecision = async (decision: 'COMPARTIR' | 'ROBAR' | 'IGNORAR') => {
+    setLeaderDecision(decision)
+    await supabase.channel('nivel3_host').send({
+      type: 'broadcast',
+      event: 'decision_final',
+      payload: { team_id: team.id, decision },
+    })
+    setPhase(decision === 'ROBAR' ? 'voting_punishment' : 'punishment_results')
+  }
+
+  const submitPunishmentVote = async (castigar: boolean) => {
+    setMyPunishmentVote(castigar)
+    await supabase.channel('nivel3_host').send({
+      type: 'broadcast',
+      event: 'voto_castigo',
+      payload: { voter_id: team.id, castigar },
+    })
+  }
+
+  const handleWheelStop = () => {
+    // Fallback local si el broadcast 'revealed' llega tarde
+    setTimeout(() => setPhase((p) => (p === 'spinning' ? 'revealed' : p)), 1500)
+  }
+
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col items-center justify-start overflow-y-auto p-4 md:p-8"
-      style={{ background: G.bg, fontFamily: "'Exo 2', sans-serif" }}>
+    // fixed inset-0 igual que Millonario — el overlay cubre la pantalla completa
+    // overflow-y-auto va en el contenedor INTERIOR para no romper flex-1
+    <div
+      className="fixed inset-0 z-[70] flex flex-col"
+      style={{ background: G.bg, fontFamily: "'Exo 2', sans-serif", color: '#F5F5F5' }}
+    >
+      {/* Zona scrollable interior */}
+      <div className="flex-1 overflow-y-auto flex flex-col items-center px-4 py-6">
 
-      <div className="w-full max-w-3xl flex flex-col gap-6">
+      {/* ── IDLE ── */}
+      {phase === 'idle' && (
+        <div className="flex-1 flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
+            style={{ fontSize: '4rem' }}
+          >
+            🎲
+          </motion.div>
+          <h2
+            style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.5rem' }}
+          >
+            EL CROUPIER ESTÁ BARAJEANDO...
+          </h2>
+          <p style={{ color: G.dim }}>Esperando que el host inicie la ronda</p>
+        </div>
+      )}
 
-        {/* Header */}
-        <header className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col">
-              <span style={{ fontFamily: "'Orbitron', sans-serif", color: 'white', fontSize: '1.1rem', fontWeight: 700 }}>{team.name}</span>
-              <span style={{ color: '#60a5fa', fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase' }}>Tu Equipo</span>
-            </div>
-            <div style={{ width: 1, height: 40, background: G.border }} />
-            <div className="flex flex-col">
-              <span style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.1rem', fontWeight: 700 }}>{team.token_balance}</span>
-              <span style={{ color: 'rgba(250,204,21,0.6)', fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase' }}>Mis Tokens</span>
-            </div>
+      {/* ── CARDS — equipos fijan apuesta ANTES de ver la pregunta ── */}
+      {phase === 'cards' && (
+        <div className="w-full max-w-2xl flex flex-col gap-6">
+          <div className="text-center">
+            <h2
+              style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.3rem' }}
+            >
+              CASINO DE LA TRAICIÓN
+            </h2>
+            <p style={{ color: G.dim, fontSize: '0.85rem', marginTop: 4 }}>
+              Fija tu apuesta y carta <strong style={{ color: '#fff' }}>antes</strong> de ver la
+              pregunta
+            </p>
           </div>
-          <div className="flex items-center gap-3">
-            {phase === 'answering' && <Timer seconds={ANSWER_SECONDS} onExpire={lockAnswer} />}
-            {phase === 'betting' && <Timer seconds={BETTING_SECONDS} onExpire={lockBet} />}
-            <div style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 9999, padding: '4px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.625rem', color: '#93c5fd', fontWeight: 700, textTransform: 'uppercase', opacity: 0.6 }}>Pregunta</span>
-              <span style={{ fontFamily: "'Orbitron', sans-serif", color: 'white', fontSize: '0.875rem' }}>
-                {question.is_final ? 'FINAL' : `${question.question_number} / 5`}
+
+          {/* Timer */}
+          {betTimer > 0 && (
+            <div className="flex items-center justify-center gap-3">
+              <span style={{ color: betTimer <= 10 ? G.error : G.dim, fontFamily: 'monospace', fontSize: '1.2rem' }}>
+                {betTimer}s para apostar
               </span>
             </div>
-          </div>
-        </header>
-
-        {/* Question box */}
-        <div style={{
-          width: '100%', padding: 24, borderRadius: 40, textAlign: 'center',
-          background: 'linear-gradient(to bottom, #1e3a5f, #111827)',
-          border: `3px solid ${G.primary}`,
-          boxShadow: '0 0 30px rgba(250,204,21,0.1)',
-        }}>
-          {question.is_final && (
-            <p style={{ color: G.error, fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: 8 }}>
-              ▶ PREGUNTA FINAL — RESPUESTA ABIERTA
-            </p>
           )}
-          <p style={{ color: 'white', fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.6 }}>{question.question_text}</p>
+
+          {/* Bet slider */}
+          <div
+            className="rounded-xl p-5 flex flex-col gap-3"
+            style={{ background: G.panel, border: `1px solid ${G.border}40` }}
+          >
+            <div className="flex justify-between items-center">
+              <span style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '0.85rem' }}>
+                APUESTA
+              </span>
+              <span style={{ color: '#fff', fontFamily: "'Orbitron', sans-serif", fontSize: '1.4rem' }}>
+                {betAmount} T
+              </span>
+            </div>
+            {canBet ? (
+              <>
+                <input
+                  type="range"
+                  min={MIN_BET}
+                  max={maxBet}
+                  step={50}
+                  value={betAmount}
+                  onChange={(e) => !betConfirmed && setBetAmount(Number(e.target.value))}
+                  disabled={betConfirmed}
+                  className="accent-[#FFD700] w-full"
+                />
+                <div className="flex justify-between text-xs" style={{ color: G.dim }}>
+                  <span>{MIN_BET} T (mín)</span>
+                  <span>{maxBet} T (máx — 40% de tu saldo)</span>
+                </div>
+              </>
+            ) : (
+              <p style={{ color: G.error, fontSize: '0.85rem', textAlign: 'center' }}>
+                Saldo insuficiente para apostar (mínimo {MIN_BET} T)
+              </p>
+            )}
+          </div>
+
+          {/* Cartas */}
+          <div className="flex flex-col gap-3">
+            <span
+              style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '0.85rem' }}
+            >
+              TUS CARTAS (opcional — elige una)
+            </span>
+            <div className="flex gap-4 flex-wrap">
+              {myCards.length === 0 && (
+                <span style={{ color: G.dim, fontStyle: 'italic', fontSize: '0.9rem' }}>
+                  No tienes cartas en esta ronda
+                </span>
+              )}
+              {myCards.map((c, i) => {
+                const meta = CARD_META[c] ?? { emoji: '🃏', description: 'Carta especial.' }
+                return (
+                  <PlayingCard
+                    key={i}
+                    name={c}
+                    emoji={meta.emoji}
+                    description={meta.description}
+                    revealed={cardsRevealed}
+                    flipDelay={i * 180} // stagger de 180ms entre cartas
+                    selected={selectedCard === c}
+                    onClick={() => {
+                      if (!betConfirmed) setSelectedCard(c === selectedCard ? null : c)
+                    }}
+                    disabled={betConfirmed}
+                  />
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Confirm */}
+          {!betConfirmed ? (
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={confirmBet}
+              disabled={!canBet}
+              style={{
+                background: G.primary,
+                color: '#000',
+                fontFamily: "'Orbitron', sans-serif",
+                fontWeight: 700,
+                fontSize: '1rem',
+                padding: '14px',
+                borderRadius: 12,
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: `0 0 20px ${G.primary}60`,
+              }}
+            >
+              CONFIRMAR APUESTA — {betAmount} T{selectedCard ? ` + ${selectedCard}` : ''}
+            </motion.button>
+          ) : (
+            <div
+              className="text-center py-4 rounded-xl flex flex-col gap-1"
+              style={{ background: `${G.green}20`, border: `1px solid ${G.green}`, color: G.green }}
+            >
+              Apuesta bloqueada: <strong>{betAmount} T</strong>
+              {selectedCard && (
+                <span>
+                  {' '}
+                  · Carta: <strong>{selectedCard}</strong>
+                </span>
+              )}
+              {selectedCard && CARD_META[selectedCard] && (
+                <span style={{ fontSize: '0.8rem', color: G.primary, display: 'block' }}>
+                  {CARD_META[selectedCard].emoji} {CARD_META[selectedCard].modifier}
+                </span>
+              )}
+              <span style={{ fontSize: '0.8rem', color: G.dim, marginTop: 2, display: 'block' }}>
+                Esperando la pregunta del Croupier...
+              </span>
+            </div>
+          )}
         </div>
+      )}
 
-        {/* ANSWERING: multiple choice */}
-        {phase === 'answering' && !question.is_final && (
-          <div className="grid grid-cols-2 gap-3">
-            {OPTIONS.filter((o) => optionText(o)).map((opt) => (
-              <button key={opt} onClick={() => !answerLocked && setSelectedOption(opt)}
-                className="p-4 rounded-xl text-left text-sm font-medium transition-all"
-                style={{
-                  border: `2px solid ${selectedOption === opt ? G.primary : G.border}`,
-                  background: selectedOption === opt ? 'rgba(250,204,21,0.1)' : G.panel,
-                  color: selectedOption === opt ? G.primary : 'white',
-                  cursor: answerLocked ? 'default' : 'pointer',
-                }}>
-                <span style={{ fontFamily: "'Orbitron', sans-serif", fontWeight: 700, marginRight: 8 }}>{opt.toUpperCase()}:</span>
-                {optionText(opt)}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* ANSWERING: open text (final question) */}
-        {phase === 'answering' && question.is_final && (
-          <textarea value={openAnswer} onChange={(e) => setOpenAnswer(e.target.value)}
-            rows={3} placeholder="ReAct o Tool Calling — justifica en una línea..."
+      {/* ── ANSWERING — pregunta + ruleta ── */}
+      {(phase === 'answering' || phase === 'spinning' || phase === 'revealed') && question && (
+        <div className="w-full max-w-5xl flex flex-col items-center gap-6">
+          {/* Pregunta */}
+          <div
+            className="w-full p-5 text-center text-lg font-bold rounded-xl"
             style={{
-              fontFamily: 'monospace', fontSize: '0.875rem', background: G.panel,
-              border: `1px solid ${G.border}`, borderRadius: 12, padding: 16,
-              color: 'white', resize: 'none', outline: 'none', width: '100%',
+              background: G.panel,
+              border: `2px solid ${G.border}`,
+              boxShadow: `0 0 20px ${G.border}30`,
             }}
-          />
-        )}
-
-        {/* Confirm answer button */}
-        {phase === 'answering' && (
-          <button onClick={lockAnswer}
-            disabled={question.is_final ? !openAnswer.trim() : !selectedOption}
-            style={{
-              background: G.green, color: '#000', fontWeight: 700,
-              padding: '12px 0', borderRadius: 9999, letterSpacing: '0.1em',
-              opacity: (question.is_final ? !openAnswer.trim() : !selectedOption) ? 0.4 : 1,
-              cursor: (question.is_final ? !openAnswer.trim() : !selectedOption) ? 'not-allowed' : 'pointer',
-              border: 'none', width: '100%', fontSize: '1rem',
-            }}>
-            🔒 Confirmar Respuesta
-          </button>
-        )}
-
-        {/* BETTING PHASE */}
-        <AnimatePresence>
-          {phase === 'betting' && (
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4">
-              <h3 style={{ fontFamily: "'Orbitron', sans-serif", color: G.error, fontWeight: 700, fontSize: '1.1rem', textAlign: 'center' }}>
-                😈 ¿A quién hundes?
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                {rivals.map((t) => (
-                  <button key={t.id} onClick={() => setBetTarget(t.id)}
-                    className="p-3 rounded-xl text-sm font-semibold transition-all"
-                    style={{
-                      border: `2px solid ${betTarget === t.id ? G.error : G.border}`,
-                      background: betTarget === t.id ? 'rgba(248,113,113,0.1)' : G.panel,
-                      color: betTarget === t.id ? G.error : 'white', textAlign: 'left', cursor: 'pointer',
-                    }}>
-                    {t.name}
-                    <span style={{ display: 'block', fontSize: '0.75rem', opacity: 0.6 }}>{t.token_balance}T</span>
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-col gap-2">
-                <label style={{ color: G.dim, fontSize: '0.875rem' }}>
-                  Monto:{' '}
-                  <span style={{ color: 'white', fontWeight: 700 }}>{betAmount}T</span>
-                  <span style={{ marginLeft: 8, color: G.dim }}>(máx {maxBet}T)</span>
-                </label>
-                <input type="range" min={50} max={Math.max(50, maxBet)} step={50}
-                  value={betAmount} onChange={(e) => setBetAmount(Number(e.target.value))}
-                  className="accent-red-400" style={{ width: '100%' }} />
-              </div>
-              <button onClick={lockBet} disabled={!betTarget || maxBet < 50}
-                style={{
-                  background: G.error, color: 'white', fontWeight: 700,
-                  padding: '12px 0', borderRadius: 9999, border: 'none', width: '100%',
-                  opacity: !betTarget ? 0.4 : 1,
-                  cursor: !betTarget ? 'not-allowed' : 'pointer', fontSize: '1rem',
-                }}>
-                Apostar {betAmount}T contra {rivals.find((r) => r.id === betTarget)?.name ?? '—'}
-              </button>
-              <button onClick={() => setPhase('waiting')}
-                style={{ color: G.dim, fontSize: '0.875rem', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'center' }}>
-                Saltar apuesta
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* WAITING PHASE */}
-        {phase === 'waiting' && (
-          <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: "'Orbitron', sans-serif", color: G.primary, fontWeight: 700, fontSize: '1.1rem' }}
-            className="animate-pulse">
-            ⏳ Esperando reveal del host...
+          >
+            {question.pregunta}
           </div>
-        )}
 
-        {/* REVEALED PHASE */}
-        <AnimatePresence>
-          {phase === 'revealed' && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 16, overflow: 'hidden' }}>
-              <div style={{ padding: '8px 24px', borderBottom: `1px solid ${G.border}`, background: '#0f172a', fontFamily: 'monospace', fontSize: '0.625rem', letterSpacing: '0.3em', color: G.dim }}>
-                RESUMEN RONDA
-              </div>
-              <div style={{ padding: 16 }} className="flex flex-col gap-3">
-                {question.correct_option && (
-                  <div style={{ background: 'rgba(74,222,128,0.1)', border: `1px solid ${G.green}`, borderRadius: 8, padding: '8px 16px', textAlign: 'center', fontFamily: "'Orbitron', sans-serif", fontWeight: 700, color: G.green }}>
-                    Respuesta correcta: {question.correct_option.toUpperCase()}
-                  </div>
-                )}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {allTeams.map((t) => {
-                    const ans = teamAnswers.find((a) => a.team_id === t.id)
-                    const isMe = t.id === team.id
-                    return (
-                      <div key={t.id} style={{
-                        padding: 12, borderRadius: 12,
-                        border: `1px solid ${isMe ? 'rgba(96,165,250,0.4)' : G.border}`,
-                        background: isMe ? 'rgba(30,64,175,0.15)' : 'rgba(255,255,255,0.03)',
-                      }}>
-                        <p style={{ fontSize: '0.625rem', marginBottom: 4, color: isMe ? '#93c5fd' : G.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {isMe && '▸ '}{t.name}
-                        </p>
-                        <p style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '1.1rem', color: !ans?.selected_option ? G.dim : ans.is_correct ? G.green : G.error }}>
-                          {!ans?.selected_option ? '--' : `${ans.selected_option.toUpperCase()} ${ans.is_correct ? '✓' : '✗'}`}
-                        </p>
-                      </div>
-                    )
-                  })}
-                </div>
-                <BetResultBanner />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+          <div className="flex flex-col md:flex-row w-full gap-8 items-start justify-center">
+            {/* Ruleta */}
+            <div className="flex-shrink-0 flex flex-col items-center gap-2">
+              <SpinWheel
+                ref={wheelRef}
+                options={[
+                  question.opciones.A,
+                  question.opciones.B,
+                  question.opciones.C,
+                  question.opciones.D,
+                ]}
+                onStop={handleWheelStop}
+                size={280}
+              />
+            </div>
 
-        {/* VOTING PHASE (final question only) */}
-        <AnimatePresence>
-          {phase === 'voting' && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4">
-              {/* All open answers */}
-              <div style={{ background: G.panel, border: `1px solid ${G.border}`, borderRadius: 16, overflow: 'hidden' }}>
-                <div style={{ padding: '8px 16px', borderBottom: `1px solid ${G.border}`, background: '#0f172a', fontFamily: 'monospace', fontSize: '0.625rem', letterSpacing: '0.3em', color: G.dim }}>
-                  RESPUESTAS DE LOS EQUIPOS
-                </div>
-                <div style={{ padding: 12 }} className="flex flex-col gap-2">
-                  {allTeams.map((t) => {
-                    const ans = teamAnswers.find((a) => a.team_id === t.id)
-                    const isMe = t.id === team.id
-                    return (
-                      <div key={t.id} style={{
-                        padding: 12, borderRadius: 8,
-                        background: isMe ? 'rgba(30,64,175,0.15)' : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${isMe ? 'rgba(96,165,250,0.4)' : G.border}`,
-                      }}>
-                        <span style={{ fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.2em', fontWeight: 700, color: isMe ? '#93c5fd' : G.dim }}>
-                          {isMe && '▸ '}{t.name}
-                        </span>
-                        <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.8)', marginTop: 4, fontStyle: 'italic' }}>
-                          {ans?.open_answer ?? '(sin respuesta)'}
-                        </p>
-                      </div>
-                    )
-                  })}
+            {/* Panel de control */}
+            <div className="flex-1 flex flex-col gap-4 min-w-[260px]">
+              {/* Resumen de apuesta */}
+              <div
+                className="rounded-xl px-4 py-3 flex justify-between items-center"
+                style={{ background: G.panel, border: `1px solid ${G.border}40` }}
+              >
+                <span style={{ color: G.dim, fontSize: '0.85rem' }}>Tu apuesta:</span>
+                <div className="flex flex-col items-end gap-0.5">
+                  <span style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontWeight: 700 }}>
+                    {betAmount} T{selectedCard ? ` · ${selectedCard}` : ''}
+                  </span>
+                  {selectedCard && CARD_META[selectedCard] && (
+                    <span style={{ fontSize: '0.72rem', color: CARD_META[selectedCard].emoji === '🔴' ? '#f87171' : CARD_META[selectedCard].emoji === '🟢' ? G.green : G.primary, opacity: 0.85 }}>
+                      {CARD_META[selectedCard].emoji} {CARD_META[selectedCard].modifier}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {!voted ? (
+              {phase === 'answering' && (
                 <>
-                  <p style={{ textAlign: 'center', fontFamily: "'Orbitron', sans-serif", fontWeight: 700, fontSize: '0.875rem', color: G.primary }}>
-                    ¿Quién dio la mejor justificación?
+                  <p style={{ color: G.dim, fontSize: '0.85rem' }}>
+                    Elige tu respuesta en la ruleta:
                   </p>
                   <div className="grid grid-cols-2 gap-3">
-                    {rivals.map((t) => (
-                      <button key={t.id} onClick={() => submitVote(t.id)}
-                        className="transition-all hover:scale-105"
+                    {(['A', 'B', 'C', 'D'] as const).map((opt) => (
+                      <button
+                        key={opt}
+                        onClick={() => !answerConfirmed && setSelectedOption(opt)}
                         style={{
-                          padding: 12, borderRadius: 12,
-                          border: `2px solid ${G.primary}`,
-                          background: 'rgba(250,204,21,0.08)', color: G.primary,
-                          fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer',
-                        }}>
-                        Votar por {t.name}
+                          background: selectedOption === opt ? `${G.primary}30` : G.panel,
+                          border: `2px solid ${selectedOption === opt ? G.primary : '#333'}`,
+                          color: '#fff',
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          textAlign: 'left',
+                          cursor: answerConfirmed ? 'default' : 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        <span style={{ color: G.primary, fontWeight: 700 }}>{opt}: </span>
+                        {question.opciones[opt]}
                       </button>
                     ))}
                   </div>
+
+                  {!answerConfirmed ? (
+                    <motion.button
+                      whileTap={{ scale: 0.96 }}
+                      onClick={confirmAnswer}
+                      disabled={!selectedOption}
+                      style={{
+                        background: selectedOption ? G.primary : '#333',
+                        color: selectedOption ? '#000' : G.dim,
+                        fontFamily: "'Orbitron', sans-serif",
+                        fontWeight: 700,
+                        padding: '12px',
+                        borderRadius: 10,
+                        border: 'none',
+                        cursor: selectedOption ? 'pointer' : 'not-allowed',
+                        boxShadow: selectedOption ? `0 0 15px ${G.primary}50` : 'none',
+                      }}
+                    >
+                      CONFIRMAR RESPUESTA
+                    </motion.button>
+                  ) : (
+                    <div
+                      className="text-center py-3 rounded-xl"
+                      style={{
+                        background: `${G.green}20`,
+                        border: `1px solid ${G.green}`,
+                        color: G.green,
+                        fontFamily: "'Orbitron', sans-serif",
+                      }}
+                    >
+                      VOTO BLOQUEADO: {selectedOption}
+                    </div>
+                  )}
                 </>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '16px 0', fontFamily: "'Orbitron', sans-serif", fontWeight: 700, color: G.green }}
-                  className="animate-pulse">
-                  ✓ Voto enviado — esperando resultados...
-                </div>
               )}
 
-              <BetResultBanner />
+              {phase === 'spinning' && (
+                <motion.div
+                  animate={{ opacity: [1, 0.5, 1] }}
+                  transition={{ repeat: Infinity, duration: 1 }}
+                  className="text-center py-6"
+                  style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.3rem' }}
+                >
+                  🎰 LA RULETA GIRA...
+                </motion.div>
+              )}
+
+              {phase === 'revealed' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col gap-4"
+                >
+                  <div
+                    className="rounded-xl p-5 text-center"
+                    style={{ background: '#1a0a2e', border: `2px solid ${G.error}`, boxShadow: `0 0 20px ${G.error}30` }}
+                  >
+                    <p style={{ color: '#fca5a5', fontStyle: 'italic', marginBottom: 8 }}>
+                      «{question.flavor_text}»
+                    </p>
+                    <p style={{ fontSize: '0.85rem', color: '#ccc' }}>{question.trampa_explicada}</p>
+                  </div>
+                  <div
+                    className="text-center text-2xl font-bold"
+                    style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif" }}
+                  >
+                    Respuesta correcta: {question.respuesta_correcta}
+                  </div>
+                  {selectedOption && (
+                    <div
+                      className="text-center"
+                      style={{
+                        color: selectedOption === question.respuesta_correcta ? G.green : G.error,
+                        fontFamily: "'Orbitron', sans-serif",
+                      }}
+                    >
+                      {selectedOption === question.respuesta_correcta ? '✓ ACERTASTE' : '✗ FALLASTE'}
+                    </div>
+                  )}
+
+                  {/* Resultado de tokens tras settle */}
+                  {settleResult && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="rounded-xl p-4 text-center flex flex-col gap-1"
+                      style={{
+                        background: settleResult.earned >= 0 ? `${G.green}15` : `${G.error}15`,
+                        border: `2px solid ${settleResult.earned >= 0 ? G.green : G.error}`,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '2rem',
+                          fontFamily: "'Orbitron', sans-serif",
+                          fontWeight: 700,
+                          color: settleResult.earned >= 0 ? G.green : '#f87171',
+                        }}
+                      >
+                        {settleResult.earned >= 0 ? '+' : ''}{settleResult.earned} T
+                      </span>
+                      {selectedCard && CARD_META[selectedCard] && (
+                        <span style={{ fontSize: '0.8rem', color: G.dim }}>
+                          {CARD_META[selectedCard].emoji} {selectedCard} — {CARD_META[selectedCard].modifier}
+                        </span>
+                      )}
+                    </motion.div>
+                  )}
+                </motion.div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── FINAL: HONRAR O TRAICIONAR ── */}
+      {(phase === 'final_decision' ||
+        phase === 'voting_punishment' ||
+        phase === 'punishment_results') && (
+        <div className="w-full max-w-4xl flex flex-col items-center gap-8 mt-6">
+          <h1
+            style={{
+              fontFamily: "'Orbitron', sans-serif",
+              color: G.error,
+              fontSize: '2rem',
+              textAlign: 'center',
+              textShadow: `0 0 20px ${G.error}`,
+            }}
+          >
+            HONRAR O TRAICIONAR
+          </h1>
+
+          <div className="text-xl text-center">
+            El líder es{' '}
+            <strong style={{ color: G.primary }}>{leaderTeam?.name}</strong>{' '}
+            con {leaderTeam?.token_balance} T
+          </div>
+
+          {phase === 'final_decision' && isLeader && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+              {(
+                [
+                  { key: 'COMPARTIR', label: '🤝 COMPARTIR', desc: 'Da 200T a todos + Reputación', color: G.green },
+                  { key: 'ROBAR', label: '🔪 ROBAR', desc: 'Roba 150T al 2do lugar', color: G.error },
+                  { key: 'IGNORAR', label: '🤐 IGNORAR', desc: 'No haces nada', color: G.dim },
+                ] as const
+              ).map(({ key, label, desc, color }) => (
+                <button
+                  key={key}
+                  onClick={() => submitLeaderDecision(key)}
+                  style={{
+                    padding: '24px',
+                    background: '#1a0a2e',
+                    border: `2px solid ${color}`,
+                    color,
+                    borderRadius: 12,
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    fontSize: '1rem',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {label}
+                  <br />
+                  <span style={{ fontSize: '0.85rem', color: '#ccc', fontWeight: 400 }}>{desc}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {phase === 'final_decision' && !isLeader && (
+            <motion.div
+              animate={{ opacity: [1, 0.6, 1] }}
+              transition={{ repeat: Infinity, duration: 1.5 }}
+              style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif" }}
+            >
+              Esperando la decisión del líder...
             </motion.div>
           )}
-        </AnimatePresence>
 
-      </div>
+          {phase === 'voting_punishment' && (
+            <div className="flex flex-col items-center gap-6 w-full">
+              <div
+                style={{ color: G.error, fontFamily: "'Orbitron', sans-serif", fontSize: '1.3rem', textAlign: 'center' }}
+              >
+                ¡EL LÍDER DECIDIÓ ROBAR!
+              </div>
+              {!isLeader && myPunishmentVote === null && (
+                <>
+                  <p style={{ color: '#ccc', textAlign: 'center' }}>
+                    ¿Aplicar castigo colectivo? (−50T al líder por cada equipo que vote sí)
+                  </p>
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => submitPunishmentVote(true)}
+                      style={{ padding: '12px 24px', background: '#7f1d1d', border: `1px solid ${G.error}`, color: '#fff', borderRadius: 8, cursor: 'pointer', fontWeight: 700 }}
+                    >
+                      SÍ, CASTIGAR
+                    </button>
+                    <button
+                      onClick={() => submitPunishmentVote(false)}
+                      style={{ padding: '12px 24px', background: '#1f2937', border: `1px solid #555`, color: '#fff', borderRadius: 8, cursor: 'pointer', fontWeight: 700 }}
+                    >
+                      NO, DEJARLO
+                    </button>
+                  </div>
+                </>
+              )}
+              {!isLeader && myPunishmentVote !== null && (
+                <div style={{ color: G.green }}>
+                  Voto registrado: {myPunishmentVote ? 'CASTIGAR' : 'NO CASTIGAR'}
+                </div>
+              )}
+              {isLeader && (
+                <motion.div
+                  animate={{ opacity: [1, 0.6, 1] }}
+                  transition={{ repeat: Infinity, duration: 1.5 }}
+                  style={{ color: G.error }}
+                >
+                  Los demás equipos están votando...
+                </motion.div>
+              )}
+              {/* Live vote tally */}
+              <div className="flex gap-3 flex-wrap justify-center">
+                {Object.entries(punishmentVotes).map(([tid, v]) => (
+                  <span
+                    key={tid}
+                    style={{
+                      padding: '4px 12px',
+                      borderRadius: 99,
+                      background: v ? `${G.error}30` : `${G.dim}20`,
+                      color: v ? G.error : G.dim,
+                      fontSize: '0.8rem',
+                      border: `1px solid ${v ? G.error : G.dim}`,
+                    }}
+                  >
+                    {allTeams.find((t) => t.id === tid)?.name ?? tid}: {v ? 'Sí' : 'No'}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {phase === 'punishment_results' && (
+            <motion.div
+              animate={{ scale: [1, 1.05, 1] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+              style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.5rem', textAlign: 'center' }}
+            >
+              ¡EL VEREDICTO HA SIDO DADO!
+            </motion.div>
+          )}
+        </div>
+      )}
+
+      </div>{/* fin zona scrollable */}
     </div>
   )
 }

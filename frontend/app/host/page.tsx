@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { usePublicGameData } from '@/hooks/usePublicGameData'
@@ -7,6 +7,12 @@ import { useHostGameData } from '@/hooks/useHostGameData'
 import { Scoreboard } from '@/components/scoreboard/Scoreboard'
 import { supabase } from '@/lib/supabase'
 import type { SessionStatus, Level2Question, Level3Question } from '@/lib/types'
+
+const G = {
+  primary: '#FFD700',
+  dim: '#a3a3a3',
+  green: '#4ade80',
+}
 
 const LEVEL_ORDER: SessionStatus[] = ['lobby', 'level1', 'level2', 'level3', 'finished']
 const LEVEL_LABELS: Record<string, string> = {
@@ -173,11 +179,11 @@ function LobbyScreen({ sessionId, hostCode, teams, onStart, starting }: {
 // ─────────────────────────────────────────────────────────
 // Pantalla 3 — Dashboard
 // ─────────────────────────────────────────────────────────
-function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound, activeQuestion2, onRevealQ2, revealingQ2, activeQuestion3, onRevealQ3, revealingQ3, finalVoteCounts, onAwardFinalVote, awardingVote }: {
+function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound, activeQuestion2, onRevealQ2, revealingQ2, activeQuestion3, onRevealQ3, revealingQ3, finalVoteCounts, onAwardFinalVote, awardingVote, casinoAutomated, casinoRound, casinoStatus, casinoTimer, setCasinoAutomated, level3ChannelRef, onJumpToLevel }: {
   session: ReturnType<typeof usePublicGameData>['session']
   teams: ReturnType<typeof usePublicGameData>['teams']
   events: ReturnType<typeof useHostGameData>['events']
-  answeredTeamIds: ReturnType<typeof useHostGameData>['answeredTeamIds']
+  answeredTeamIds: Set<string>
   betsCount: number
   onAdvance: () => void
   advancing: boolean
@@ -193,9 +199,18 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
   finalVoteCounts: Record<string, number>
   onAwardFinalVote: () => void
   awardingVote: boolean
+  casinoAutomated: boolean
+  casinoRound: number
+  casinoStatus: string
+  casinoTimer: number
+  setCasinoAutomated: (v: boolean) => void
+  level3ChannelRef: React.RefObject<any>
+  onJumpToLevel: (target: SessionStatus) => void
 }) {
   const [showEndModal, setShowEndModal] = useState(false)
   const [ending, setEnding] = useState(false)
+  const [showDevJump, setShowDevJump] = useState(false)
+  const [seedingTokens, setSeedingTokens] = useState(false)
 
   if (!session) return null
   const currentIndex = LEVEL_ORDER.indexOf(session.status)
@@ -282,6 +297,66 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
               <p style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '1.8rem', lineHeight: 1, color: 'var(--cup-red)' }}>{val}</p>
             </div>
           ))}
+          {/* DEV — Saltar a nivel */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDevJump((v) => !v)}
+              className="cup-btn text-xs px-3 py-2"
+              style={{ background: 'rgba(30,80,180,0.15)', border: '2px solid #3b82f6', color: '#3b82f6' }}
+              title="Saltar a nivel (modo pruebas)"
+            >
+              DEV ⚡
+            </button>
+            {showDevJump && (
+              <div
+                className="absolute right-0 top-full mt-2 z-50 flex flex-col gap-2 p-3 rounded-xl"
+                style={{ background: 'var(--cup-bg2)', border: '1px solid #3b82f6', minWidth: 180 }}
+              >
+                <p className="text-[10px] font-mono text-blue-400 uppercase tracking-widest mb-1">Saltar a nivel</p>
+                {(['level1', 'level2', 'level3', 'finished'] as const).map((lvl) => (
+                  <button
+                    key={lvl}
+                    onClick={() => { onJumpToLevel(lvl); setShowDevJump(false) }}
+                    disabled={session.status === lvl || advancing}
+                    className="cup-btn text-sm py-2"
+                    style={{
+                      opacity: session.status === lvl ? 0.4 : 1,
+                      background: session.status === lvl ? '#111' : undefined,
+                      textAlign: 'left',
+                    }}
+                  >
+                    {session.status === lvl ? '▶ ' : ''}{LEVEL_LABELS[lvl] ?? lvl}
+                  </button>
+                ))}
+
+                <div style={{ height: 1, background: '#3b82f630', margin: '4px 0' }} />
+                <p className="text-[10px] font-mono text-blue-400 uppercase tracking-widest">Tokens</p>
+                <button
+                  className="cup-btn text-sm py-2"
+                  disabled={seedingTokens}
+                  style={{ textAlign: 'left', background: 'rgba(34,197,94,0.15)', border: '1px solid #22c55e', color: '#22c55e' }}
+                  onClick={async () => {
+                    setSeedingTokens(true)
+                    await Promise.all(
+                      teams
+                        .filter((t) => t.token_balance < 500)
+                        .map((t) =>
+                          supabase
+                            .from('teams')
+                            .update({ token_balance: 500 })
+                            .eq('id', t.id)
+                        )
+                    )
+                    setSeedingTokens(false)
+                    setShowDevJump(false)
+                  }}
+                >
+                  {seedingTokens ? 'Dando...' : '💰 Dar 500T a todos'}
+                </button>
+              </div>
+            )}
+          </div>
+
           {session.status !== 'finished' && (
             <button onClick={() => setShowEndModal(true)}
               className="cup-btn text-sm px-3 py-2"
@@ -376,7 +451,16 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                   <p className="text-xs text-right" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Orbitron', sans-serif" }}>
                     {answeredTeamIds.size}/{teams.length} CONFIRMARON
                   </p>
-                  {activeQuestion2 && !activeQuestion2.revealed_at && (
+                  {activeQuestion2 && !activeQuestion2.started_at && (
+                    <button 
+                      onClick={async () => {
+                        await supabase.from('level2_questions').update({ started_at: new Date().toISOString() }).eq('id', activeQuestion2.id)
+                      }}
+                      className="cup-btn py-3 text-sm font-bold" style={{ background: '#5b21b6', color: 'white' }}>
+                      ▶ Iniciar Fase de Pregunta
+                    </button>
+                  )}
+                  {activeQuestion2 && activeQuestion2.started_at && !activeQuestion2.revealed_at && (
                     <button onClick={onRevealQ2} disabled={revealingQ2}
                       className="cup-btn cup-btn-gold px-6 py-3">
                       {revealingQ2 ? 'Revelando...' : '🔍 Revelar Respuesta'}
@@ -395,59 +479,76 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
             </div>
           )}
 
-          {/* Controles — Level 3 */}
+          {/* Controles — Level 3 (Casino) */}
           {session.status === 'level3' && (
             <div className="flex flex-col gap-3">
-              <div className="cup-panel px-4 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-xs" style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold-dark)' }}>PREGUNTA ACTIVA</p>
-                  <p style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '1.6rem', lineHeight: 1 }}>
-                    {activeQuestion3
-                      ? activeQuestion3.is_final ? 'FINAL' : `${activeQuestion3.question_number} / 5`
-                      : 'Todas reveladas'}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <p className="text-xs text-right" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Orbitron', sans-serif" }}>
-                    {answeredTeamIds.size}/{teams.length} RESPONDIERON
-                  </p>
-                  {activeQuestion3 && !activeQuestion3.revealed_at && (
-                    <button onClick={onRevealQ3} disabled={revealingQ3}
-                      className="cup-btn cup-btn-gold px-6 py-3">
-                      {revealingQ3 ? 'Revelando...' : '🔍 Revelar'}
+              <div className="cup-panel px-4 py-3 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs" style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold-dark)' }}>SISTEMA DEL CROUPIER (NIVEL 3)</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono" style={{ color: casinoAutomated ? G.green : G.dim }}>[{casinoAutomated ? 'AUTOMÁTICO' : 'MANUAL'}]</span>
+                    <button onClick={() => setCasinoAutomated(!casinoAutomated)} className="w-8 h-4 bg-slate-800 rounded-full relative border border-white/10">
+                      <motion.div animate={{ x: casinoAutomated ? 16 : 0 }} className="w-3.5 h-3.5 bg-yellow-500 rounded-full" />
                     </button>
-                  )}
+                  </div>
                 </div>
+
+                {casinoAutomated ? (
+                  <div className="flex flex-col gap-4 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-mono text-white/70">Estado:</span>
+                      <span className="text-sm font-bold uppercase tracking-widest" style={{ color: G.primary }}>
+                        {casinoStatus === 'idle' && '⌛ Esperando Inicio'}
+                        {casinoStatus === 'seeding' && '🃏 Repartiendo Cartas...'}
+                        {casinoStatus === 'cards' && '💰 Equipos fijando apuesta'}
+                        {casinoStatus === 'answering' && '🎲 Pregunta visible — votando'}
+                        {casinoStatus === 'spinning' && '🎡 Ruleta Girando...'}
+                        {casinoStatus === 'revealed' && '✅ Resultados'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-mono text-white/70">Ronda:</span>
+                      <span className="text-lg font-orbitron text-yellow-500">{casinoRound} / 4</span>
+                    </div>
+                    {(casinoStatus === 'cards' || casinoStatus === 'answering') && (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex justify-between text-[10px] font-mono text-yellow-500/60 uppercase">
+                          <span>Tiempo restante</span>
+                          <span>{betsCount} / {teams.length} apuestas</span>
+                        </div>
+                        <div className="h-2 bg-slate-800 rounded-full overflow-hidden border border-white/5">
+                          <motion.div animate={{ width: `${(casinoTimer / 60) * 100}%` }} className="h-full bg-yellow-500" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Botones manuales (mantener por si acaso) */}
+                    <button onClick={async () => { /* logic */ }} className="cup-btn cup-btn-gold py-2 text-sm">🃏 Cartas</button>
+                    <button onClick={async () => { /* logic */ }} className="cup-btn cup-btn-gold py-2 text-sm">🎲 Pregunta</button>
+                    <button onClick={() => level3ChannelRef.current?.send({ type: 'broadcast', event: 'spin_wheel', payload: {} })} className="cup-btn py-2 text-sm" style={{ background: '#5b21b6' }}>🎡 Girar</button>
+                    <button onClick={() => level3ChannelRef.current?.send({ type: 'broadcast', event: 'revealed', payload: {} })} className="cup-btn py-2 text-sm" style={{ background: '#22c55e' }}>💰 Liquidar</button>
+                  </div>
+                )}
               </div>
 
-              {activeQuestion3?.is_final && activeQuestion3.revealed_at && (
-                <div className="cup-panel flex flex-col gap-3 p-4">
-                  <p className="text-xs" style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold-dark)' }}>
-                    VOTOS — PREGUNTA FINAL
-                  </p>
-                  <div className="flex flex-col gap-1">
-                    {teams.map((t) => (
-                      <div key={t.id} className="flex items-center justify-between">
-                        <span style={{ color: 'var(--cup-cream)', fontSize: '0.875rem' }}>{t.name}</span>
-                        <span style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '1rem' }}>
-                          {finalVoteCounts[t.id] ?? 0} votos
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={onAwardFinalVote}
-                    disabled={awardingVote || Object.keys(finalVoteCounts).length === 0}
-                    className="cup-btn cup-btn-gold py-3">
-                    {awardingVote ? 'Otorgando...' : '🏆 Cerrar votación y otorgar +300T'}
+              {/* Botón manual para trigger de final decision */}
+              {(casinoRound >= 4 || !casinoAutomated) && (
+                <div className="cup-panel px-4 py-3 flex flex-col gap-2">
+                  <p className="text-xs" style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold-dark)' }}>MOMENTO DE LA VERDAD (FINAL)</p>
+                  <button 
+                    onClick={() => level3ChannelRef.current?.send({ type: 'broadcast', event: 'honrar_o_traicionar', payload: {} })}
+                    className="cup-btn py-3 text-sm font-bold" style={{ background: 'var(--cup-red)' }}
+                  >
+                    ⚖️ Iniciar HONRAR O TRAICIONAR
                   </button>
                 </div>
               )}
 
-              {!activeQuestion3 && (
-                <button onClick={onAdvance} disabled={advancing} className="cup-btn cup-btn-gold text-xl py-4">
-                  {advancing ? 'Avanzando...' : '▶ Terminar juego'}
-                </button>
-              )}
+              <button onClick={onAdvance} disabled={advancing} className="cup-btn text-xl py-4 mt-4" style={{ background: 'var(--cup-red)' }}>
+                {advancing ? 'Terminando...' : '▶ TERMINAR JUEGO'}
+              </button>
             </div>
           )}
 
@@ -572,7 +673,171 @@ function HostSession({ sessionId }: { sessionId: string }) {
     return () => { supabase.removeChannel(channel) }
   }, [session, sessionId])
 
-  // Track active question during level3
+  // --- CASINO AUTOMATION (LEVEL 3) ---
+  const [casinoAutomated, setCasinoAutomated] = useState(true);
+  const [casinoRound, setCasinoRound] = useState(0);
+  // 'cards' = bet phase (no question yet), 'answering' = question visible
+  const [casinoStatus, setCasinoStatus] = useState<'idle' | 'seeding' | 'cards' | 'answering' | 'spinning' | 'revealed'>('idle');
+  const [casinoTimer, setCasinoTimer] = useState(0);
+  const level3ChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // Prevent duplicate question generation when effect re-runs
+  const questionSentRef = useRef(false);
+  // Votos acumulados de la ronda actual: { [teamId]: { option, bet, card } }
+  const casinoVotesRef = useRef<Record<string, { option: string; bet: number; card: string | null }>>({});
+  // Pregunta actual (necesaria para el settle)
+  const casinoQuestionRef = useRef<{ respuesta_correcta: string } | null>(null);
+
+  // Maintain Level 3 Channel (global broadcast)
+  useEffect(() => {
+    if (!session || session.status !== 'level3') return;
+
+    const chan = supabase.channel('nivel3_global', { config: { broadcast: { self: true } } }).subscribe();
+    level3ChannelRef.current = chan;
+
+    return () => { supabase.removeChannel(chan) };
+  }, [session?.status]);
+
+  // Escuchar votos de los equipos en nivel3_host
+  useEffect(() => {
+    if (!session || session.status !== 'level3') return;
+
+    const hostChan = supabase
+      .channel('nivel3_host', { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'team_voted' }, (payload) => {
+        const { team_id, option, bet, card } = payload.payload ?? {};
+        if (team_id) {
+          casinoVotesRef.current[team_id] = { option, bet: Number(bet) || 50, card: card ?? null };
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(hostChan) };
+  }, [session?.status]);
+
+  // ── Efecto 1: TRANSICIONES de estado (no maneja timers, solo lógica) ───────
+  useEffect(() => {
+    if (!session || session.status !== 'level3' || !casinoAutomated) return;
+
+    // Repartir cartas al inicio
+    if (casinoRound === 0 && casinoStatus === 'idle') {
+      setCasinoStatus('seeding');
+      setTimeout(async () => {
+        try {
+          const res = await fetch('/api/nivel3/cartas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId }),
+          }).then((r) => r.json());
+          if (res.ok && res.teamCards) {
+            Object.entries(res.teamCards).forEach(([tid, cards]) => {
+              supabase.channel(`private-team-${tid}`)
+                .send({ type: 'broadcast', event: 'cartas', payload: { cards } });
+            });
+          }
+        } catch { /* backend offline — seguimos */ }
+        setCasinoRound(1);
+        setCasinoStatus('cards');
+        setCasinoTimer(30);
+      }, 2000);
+      return;
+    }
+
+    // Timer de apuestas (cards) expirado → pasar a answering
+    if (casinoStatus === 'cards' && casinoTimer === 0) {
+      questionSentRef.current = false;
+      setCasinoStatus('answering');
+      setCasinoTimer(30);
+      return;
+    }
+
+    // Entramos a answering → generar pregunta UNA sola vez
+    if (casinoStatus === 'answering' && !questionSentRef.current) {
+      questionSentRef.current = true;
+      casinoVotesRef.current = {}; // limpiar votos de ronda anterior
+      const topics = ['langchain', 'react', 'tool_calling', 'comparativa'];
+      const topic = topics[(casinoRound - 1) % topics.length];
+      fetch('/api/nivel3/pregunta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic }),
+      })
+        .then((r) => r.json())
+        .then((res) => {
+          if (res.ok && res.question) {
+            casinoQuestionRef.current = res.question; // guardar para settle
+            level3ChannelRef.current?.send({
+              type: 'broadcast', event: 'nivel3_ronda',
+              payload: { question: res.question },
+            });
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+
+    // Timer de respuestas (answering) expirado → girar ruleta
+    if (casinoStatus === 'answering' && casinoTimer === 0) {
+      setCasinoStatus('spinning');
+      setCasinoTimer(-1);
+      level3ChannelRef.current?.send({ type: 'broadcast', event: 'spin_wheel', payload: {} });
+
+      setTimeout(() => {
+        // Liquidar tokens con la pregunta y votos acumulados
+        const q = casinoQuestionRef.current;
+        const votes = casinoVotesRef.current;
+        if (q && Object.keys(votes).length > 0) {
+          const teamBets = Object.entries(votes).map(([team_id, v]) => ({
+            team_id, option: v.option, bet: v.bet, card: v.card,
+          }));
+          fetch('/api/nivel3/settle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ correct_option: q.respuesta_correcta, team_bets: teamBets }),
+          })
+            .then((r) => r.json())
+            .then((res) => {
+              if (res.ok) {
+                // Broadcast resultados para que los equipos los vean
+                level3ChannelRef.current?.send({
+                  type: 'broadcast', event: 'settle_results',
+                  payload: { results: res.results, correct: q.respuesta_correcta },
+                });
+              }
+            })
+            .catch(() => {});
+        }
+
+        level3ChannelRef.current?.send({ type: 'broadcast', event: 'revealed', payload: {} });
+        setCasinoStatus('revealed');
+
+        setTimeout(() => {
+          if (casinoRound < 4) {
+            questionSentRef.current = false;
+            setCasinoRound((r) => r + 1);
+            setCasinoStatus('cards');
+            setCasinoTimer(30);
+          } else {
+            setCasinoStatus('idle');
+            level3ChannelRef.current?.send({ type: 'broadcast', event: 'honrar_o_traicionar', payload: {} });
+          }
+        }, 10000);
+      }, 8000);
+    }
+  // casinoTimer en deps para detectar cuando llega a 0
+  }, [session?.status, casinoRound, casinoStatus, casinoAutomated, casinoTimer, sessionId]);
+
+  // ── Efecto 2: COUNTDOWN — separado para que la limpieza siempre funcione ─
+  useEffect(() => {
+    if (!session || session.status !== 'level3' || !casinoAutomated) return;
+    if (!['cards', 'answering'].includes(casinoStatus) || casinoTimer <= 0) return;
+
+    // Un único setInterval por render; el cleanup lo cancela siempre
+    const id = setInterval(() => setCasinoTimer((t) => t - 1), 1000);
+    return () => clearInterval(id);
+  // Re-ejecutar solo cuando cambia el status o el timer (1 vez/s durante countdown)
+  }, [session?.status, casinoStatus, casinoTimer, casinoAutomated]);
+
+  // Track active question during level3 (not used in auto mode but kept for consistency)
   useEffect(() => {
     if (!session || session.status !== 'level3') { setActiveQuestion3(null); return }
 
@@ -699,6 +964,30 @@ function HostSession({ sessionId }: { sessionId: string }) {
     setAdvancing(false)
   }
 
+  /** Salta directamente a cualquier nivel sin pasar por los anteriores (modo dev/pruebas) */
+  const jumpToLevel = async (target: SessionStatus) => {
+    if (advancing) return
+    setAdvancing(true)
+    const targetIndex = LEVEL_ORDER.indexOf(target)
+    const now = new Date()
+    await supabase.from('game_sessions').update({
+      status: target,
+      current_level: targetIndex,
+      ...(target === 'level1' ? { started_at: now.toISOString() } : {}),
+      ...(target === 'finished' ? { ended_at: now.toISOString() } : {}),
+    }).eq('id', sessionId)
+
+    if (target === 'level1') {
+      const round1Start = new Date(now.getTime() + 10_000)
+      await supabase.from('level1_rounds')
+        .update({ started_at: round1Start.toISOString() })
+        .eq('session_id', sessionId)
+        .eq('round_number', 1)
+    }
+
+    setAdvancing(false)
+  }
+
   if (session.status === 'lobby') {
     return <LobbyScreen sessionId={sessionId} hostCode={session.host_code} teams={teams} onStart={advanceLevel} starting={advancing} />
   }
@@ -706,6 +995,7 @@ function HostSession({ sessionId }: { sessionId: string }) {
     <GameDashboard session={session} teams={teams} events={events}
       answeredTeamIds={answeredTeamIds} betsCount={betsCount}
       onAdvance={advanceLevel} advancing={advancing}
+      onJumpToLevel={jumpToLevel}
       activeRoundNumber={activeRoundNumber}
       onEndRound={endCurrentRound} endingRound={endingRound}
       activeQuestion2={activeQuestion2}
@@ -715,6 +1005,12 @@ function HostSession({ sessionId }: { sessionId: string }) {
       onRevealQ3={revealCurrentQuestion3}
       revealingQ3={revealingQ3}
       finalVoteCounts={finalVoteCounts}
+      casinoAutomated={casinoAutomated}
+      casinoRound={casinoRound}
+      casinoStatus={casinoStatus}
+      casinoTimer={casinoTimer}
+      setCasinoAutomated={setCasinoAutomated}
+      level3ChannelRef={level3ChannelRef}
       onAwardFinalVote={awardFinalVote}
       awardingVote={awardingVote} />
   )
