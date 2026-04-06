@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { seedGame } from '@/lib/seedGame'
 
 const HOST_PASSWORD = process.env.HOST_PASSWORD ?? 'tokenwars2025'
 
@@ -21,73 +22,56 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error?.message ?? 'Error al crear sesión' }, { status: 500 })
   }
 
-  // 2. Seed del juego — AWAITEADO (no fire-and-forget).
-  //    En Vercel, los fetch en background se cancelan cuando la función devuelve la respuesta,
-  //    dejando la sesión sin contenido y haciendo que los niveles aparezcan vacíos.
-  //    Intentamos el backend Python con timeout de 5s; si falla, usamos el seed interno.
-  const pythonBackendUrl = process.env.AI_BACKEND_URL ?? 'http://localhost:8000'
-
-  let seeded = false
   console.log(`[create-session] Sesión creada id=${data.id} code=${data.host_code}`)
-  console.log(`[create-session] AI_BACKEND_URL=${pythonBackendUrl}`)
 
-  // Intento 1: Python backend (LangChain) con timeout agresivo
-  console.log('[create-session] Intentando Python backend...')
-  try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 5000)
-    const pyRes = await fetch(`${pythonBackendUrl}/seed`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: data.id }),
-      signal: ctrl.signal,
-    })
-    clearTimeout(timer)
-    if (pyRes.ok) {
-      seeded = true
-      console.log('[create-session] Python backend seed OK')
-    } else {
-      console.warn(`[create-session] Python backend respondió HTTP ${pyRes.status}, usando fallback...`)
-    }
-  } catch (err) {
-    console.warn('[create-session] Python backend no disponible:', err instanceof Error ? err.message : err)
-  }
+  // 2. Intentar seed con el backend Python primero (si está configurado y no es el mismo host)
+  const pythonBackendUrl = process.env.AI_BACKEND_URL ?? ''
+  let seeded = false
 
-  // Intento 2: seed interno de Next.js (Groq directo, sin LangChain)
-  if (!seeded) {
-    console.log('[create-session] Ejecutando seed interno (Groq)...')
-    const t0 = Date.now()
+  if (pythonBackendUrl && !pythonBackendUrl.includes('localhost')) {
+    console.log(`[create-session] Intentando Python backend: ${pythonBackendUrl}/seed`)
     try {
-      const baseUrl = req.nextUrl.origin
-      console.log(`[create-session] POST ${baseUrl}/api/seed-session`)
-      const seedRes = await fetch(`${baseUrl}/api/seed-session`, {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 8000)
+      const pyRes = await fetch(`${pythonBackendUrl.replace(/\/$/, '')}/seed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: data.id }),
+        signal: ctrl.signal,
       })
-      if (seedRes.ok) {
+      clearTimeout(timer)
+      if (pyRes.ok) {
         seeded = true
-        console.log(`[create-session] Seed interno OK en ${Date.now() - t0}ms`)
+        console.log('[create-session] Python backend seed OK')
       } else {
-        const errBody = await seedRes.json().catch(() => ({}))
-        console.error(`[create-session] Seed interno HTTP ${seedRes.status} en ${Date.now() - t0}ms:`, errBody)
+        console.warn(`[create-session] Python backend HTTP ${pyRes.status}, usando seedGame directo...`)
       }
     } catch (err) {
-      console.error(`[create-session] Seed interno error de red en ${Date.now() - t0}ms:`, err instanceof Error ? err.message : err)
+      console.warn('[create-session] Python backend falló:', err instanceof Error ? err.message : err)
+    }
+  } else {
+    console.log('[create-session] AI_BACKEND_URL no configurado o es localhost, usando seedGame directo')
+  }
+
+  // 3. Fallback: llamar seedGame() directamente (sin HTTP interno — funciona en Railway/Vercel)
+  if (!seeded) {
+    try {
+      await seedGame(data.id)
+      seeded = true
+    } catch (err) {
+      console.error('[create-session] seedGame() falló:', err instanceof Error ? err.message : err)
     }
   }
 
   if (!seeded) {
     console.error(`[create-session] FALLO TOTAL — eliminando sesión huérfana id=${data.id}`)
-    // Limpiar la sesión huérfana para no dejar basura en la DB
     await supabaseAdmin.from('game_sessions').delete().eq('id', data.id)
     return NextResponse.json(
-      { error: 'No se pudo generar el contenido del juego. Intenta de nuevo.' },
+      { error: 'No se pudo generar el contenido del juego. Verifica GROQ_API_KEY y SUPABASE_SERVICE_ROLE_KEY en Railway.' },
       { status: 500 }
     )
   }
 
-  console.log(`[create-session] LISTO — sesión ${data.id} con contenido generado`)
-  // 3. Responder con los datos de la sesión (seed completado)
+  console.log(`[create-session] LISTO — sesión ${data.id} lista para jugar`)
   return NextResponse.json(data)
 }
