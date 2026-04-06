@@ -777,6 +777,8 @@ function HostSession({ sessionId }: { sessionId: string }) {
   const teamsRef = useRef<typeof teams>([]);
   // Conteo de apuestas confirmadas (bet_confirmed broadcasts)
   const [casinoBetsCount, setCasinoBetsCount] = useState(0);
+  // Señal explícita de que todos los equipos ya votaron (evita race con el setInterval del countdown)
+  const [allTeamsVoted, setAllTeamsVoted] = useState(false);
 
   // Sync refs with state/props so event-handler closures always see fresh values
   useEffect(() => { casinoStatusRef.current = casinoStatus; }, [casinoStatus]);
@@ -816,9 +818,9 @@ function HostSession({ sessionId }: { sessionId: string }) {
           casinoVotesRef.current[team_id] = { option, bet: Number(bet) || 50, card: card ?? null };
           const voteCount = Object.keys(casinoVotesRef.current).length;
           setCasinoVotesCount(voteCount);
-          // Avanzar inmediatamente si todos los equipos ya votaron
+          // Señal explícita en lugar de setCasinoTimer(0) — evita la race condition con el countdown
           if (casinoStatusRef.current === 'answering' && voteCount >= teamsLengthRef.current && teamsLengthRef.current > 0) {
-            setCasinoTimer(0);
+            setAllTeamsVoted(true);
           }
         }
       })
@@ -957,8 +959,9 @@ function HostSession({ sessionId }: { sessionId: string }) {
       return;
     }
 
-    // Timer de respuestas (answering) expirado → girar ruleta
-    if (casinoStatus === 'answering' && casinoTimer === 0) {
+    // Timer de respuestas (answering) expirado O todos votaron → girar ruleta
+    if (casinoStatus === 'answering' && (casinoTimer === 0 || allTeamsVoted)) {
+      setAllTeamsVoted(false);
       setCasinoStatus('spinning');
       setCasinoTimer(-1);
       level3ChannelRef.current?.send({ type: 'broadcast', event: 'spin_wheel', payload: {} });
@@ -1023,7 +1026,7 @@ function HostSession({ sessionId }: { sessionId: string }) {
     }
   // casinoTimer en deps para detectar cuando llega a 0
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.status, casinoRound, casinoStatus, casinoAutomated, casinoTimer, sessionId]);
+  }, [session?.status, casinoRound, casinoStatus, casinoAutomated, casinoTimer, allTeamsVoted, sessionId]);
 
   // ── Efecto 2: COUNTDOWN — separado para que la limpieza siempre funcione ─
   useEffect(() => {

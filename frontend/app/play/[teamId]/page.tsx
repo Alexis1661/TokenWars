@@ -10,7 +10,7 @@ import { Millonario } from '@/components/level2/Millonario'
 import { LaTraicion } from '@/components/level3/LaTraicion'
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Level1Round, Level2Question, Level3Question, AnswerOption } from '@/lib/types'
+import type { Level1Round, Level2Question, Level3Question, AnswerOption, Team } from '@/lib/types'
 
 export default function PlayPage() {
   const { teamId } = useParams<{ teamId: string }>()
@@ -162,7 +162,7 @@ export default function PlayPage() {
   const hasScoreboard = session.status !== 'finished' && session.status !== 'lobby' && session.status !== 'level2' && session.status !== 'level3'
 
   return (
-    <main className="min-h-screen cup-stars-bg" style={{ background: 'var(--cup-bg)', paddingBottom: hasScoreboard ? 180 : 0 }}>
+    <main className="min-h-screen cup-stars-bg" style={{ background: 'var(--cup-bg)', paddingBottom: hasScoreboard ? 44 : 0 }}>
 
       {/* Modal de confirmación de salida */}
       <AnimatePresence>
@@ -273,14 +273,83 @@ export default function PlayPage() {
         )}
       </div>
 
-      {/* Scoreboard fijo abajo */}
-      {hasScoreboard && (
-        <aside className="fixed bottom-0 left-0 right-0 z-10 p-3"
-          style={{ borderTop: '1px solid var(--cup-gold-dark)', background: 'var(--cup-bg2)' }}>
-          <Scoreboard teams={teams} highlightTeamId={team.id} />
-        </aside>
-      )}
+      {/* Scoreboard fijo abajo — colapsable para no tapar el contenido */}
+      {hasScoreboard && <BottomScoreboard teams={teams} highlightTeamId={team.id} />}
     </main>
+  )
+}
+
+// ─── Scoreboard colapsable fijo en la parte inferior ────────
+function BottomScoreboard({ teams, highlightTeamId }: { teams: Team[]; highlightTeamId: string }) {
+  const [open, setOpen] = useState(false)
+  const sorted = [...teams].sort((a, b) => b.token_balance - a.token_balance)
+  const me = sorted.find((t) => t.id === highlightTeamId)
+  const myPos = sorted.findIndex((t) => t.id === highlightTeamId) + 1
+
+  return (
+    <aside className="fixed bottom-0 left-0 right-0 z-20"
+      style={{ borderTop: '2px solid var(--cup-gold-dark)', background: 'var(--cup-bg2)' }}>
+
+      {/* Barra de toggle — siempre visible, compacta */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-2"
+        style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '0.72rem', color: 'var(--cup-gold)', letterSpacing: '0.12em', background: 'none', border: 'none', cursor: 'pointer' }}
+      >
+        <span>CLASIFICACIÓN</span>
+        <div className="flex items-center gap-4">
+          {me && (
+            <span style={{ color: 'var(--cup-cream)', fontSize: '0.68rem' }}>
+              #{myPos} · <span style={{ color: 'var(--cup-gold)' }}>{me.token_balance} T</span>
+            </span>
+          )}
+          <motion.span
+            animate={{ rotate: open ? 180 : 0 }}
+            transition={{ duration: 0.2 }}
+            style={{ display: 'inline-block', color: 'var(--cup-gold-dark)' }}
+          >
+            ▲
+          </motion.span>
+        </div>
+      </button>
+
+      {/* Lista desplegable */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="px-3 pb-3 flex flex-col gap-1">
+              {sorted.map((t, i) => {
+                const isMe = t.id === highlightTeamId
+                return (
+                  <div key={t.id} className="flex items-center gap-3 px-3 py-1.5 rounded-lg"
+                    style={{
+                      background: isMe ? 'rgba(250,204,21,0.12)' : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${isMe ? 'var(--cup-gold)' : 'rgba(255,255,255,0.06)'}`,
+                    }}>
+                    <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '0.75rem', width: 22, textAlign: 'center',
+                      color: i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#a3a3a3' }}>
+                      #{i + 1}
+                    </span>
+                    <span style={{ flex: 1, fontSize: '0.85rem', color: isMe ? 'var(--cup-gold)' : 'var(--cup-cream)', fontWeight: isMe ? 700 : 400 }}>
+                      {t.name}{isMe && <span style={{ fontSize: '0.65rem', color: '#a3a3a3', marginLeft: 6 }}>◀ TU</span>}
+                    </span>
+                    <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '0.85rem', color: 'var(--cup-gold)', fontWeight: 700 }}>
+                      {t.token_balance} T
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </aside>
   )
 }
 
