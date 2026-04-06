@@ -12,8 +12,14 @@ interface HostEvent {
 interface HostGameData {
   /** Eventos recientes visibles solo para el host */
   events: HostEvent[]
-  /** Conjunto de team_ids que ya respondieron la pregunta activa de nivel 2 */
+  /**
+   * Conjunto de team_ids que ya respondieron la pregunta activa de nivel 2.
+   * Rastreado POR PREGUNTA (question_id → Set<team_id>) para evitar falsos
+   * positivos si hay múltiples sesiones activas simultáneamente.
+   */
   answeredTeamIds: Set<string>
+  /** Respuestas por pregunta: { [questionId]: Set<teamId> } */
+  answersByQuestion: Record<string, Set<string>>
   /** Apuestas registradas (sin revelar monto ni objetivo hasta el reveal) */
   betsCount: number
   /** Submissions de nivel 1 registradas */
@@ -28,12 +34,13 @@ interface HostGameData {
  *
  * Suscribe a:
  *   - level1_submissions (INSERT)
- *   - level2_answers     (INSERT) — muestra check, no el contenido
+ *   - level2_answers     (INSERT) — rastreado por question_id para filtrar sesiones cruzadas
  *   - level3_bets        (INSERT) — registra que hubo apuesta, sin revelar objetivo
  */
 export function useHostGameData(sessionId: string): HostGameData {
   const [events, setEvents] = useState<HostEvent[]>([])
-  const [answeredTeamIds, setAnsweredTeamIds] = useState<Set<string>>(new Set())
+  // answersByQuestion: { [questionId]: Set<teamId> }
+  const [answersByQuestion, setAnswersByQuestion] = useState<Record<string, Set<string>>>({})
   const [betsCount, setBetsCount] = useState(0)
   const [submissionsCount, setSubmissionsCount] = useState(0)
 
@@ -68,10 +75,14 @@ export function useHostGameData(sessionId: string): HostGameData {
           table: 'level2_answers',
         },
         (payload) => {
-          // El profesor ve que un equipo respondió (check en pantalla),
-          // pero el contenido de la respuesta se mantiene oculto para los demás.
           const answer = payload.new as Level2Answer
-          setAnsweredTeamIds((prev) => new Set(Array.from(prev).concat(answer.team_id)))
+          // Rastrear por question_id para que sesiones paralelas no interfieran
+          setAnswersByQuestion((prev) => {
+            const existing = prev[answer.question_id] ?? new Set<string>()
+            const updated = new Set(existing)
+            updated.add(answer.team_id)
+            return { ...prev, [answer.question_id]: updated }
+          })
           setEvents((prev) => [
             ...prev,
             {
@@ -90,7 +101,6 @@ export function useHostGameData(sessionId: string): HostGameData {
           table: 'level3_bets',
         },
         (payload) => {
-          // Registrar que hubo una apuesta sin revelar el objetivo hasta el reveal.
           const bet = payload.new as Level3Bet
           setBetsCount((n) => n + 1)
           setEvents((prev) => [
@@ -110,5 +120,10 @@ export function useHostGameData(sessionId: string): HostGameData {
     }
   }, [sessionId])
 
-  return { events, answeredTeamIds, betsCount, submissionsCount }
+  // answeredTeamIds es la unión de todos los question buckets (compatibilidad con UI existente)
+  const answeredTeamIds = new Set<string>(
+    Object.values(answersByQuestion).flatMap((s) => Array.from(s))
+  )
+
+  return { events, answeredTeamIds, answersByQuestion, betsCount, submissionsCount }
 }

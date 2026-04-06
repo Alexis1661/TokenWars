@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
 import { supabaseAdmin } from '@/lib/supabase'
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+// Timeout de 6s para que no cuelgue en Vercel si Groq no responde
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY, timeout: 6000 })
 
 // ──────────────────────────────────────────────
 // Generadores de retos con Groq
@@ -41,6 +42,8 @@ Reglas para "challenge": PÁRRAFO de 250-350 caracteres. Explica qué acción l�
 Responde ÚNICAMENTE con JSON válido: {"display": "...", "challenge": "..."}`
 
   try {
+    console.log(`[seed-session/groq] Llamando a Groq type=${type}...`)
+    const t = Date.now()
     const response = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       temperature: 0.7,
@@ -49,16 +52,20 @@ Responde ÚNICAMENTE con JSON válido: {"display": "...", "challenge": "..."}`
         { role: 'user', content: `Genera el reto para este escenario: ${scenario}` },
       ],
     })
+    console.log(`[seed-session/groq] OK type=${type} en ${Date.now() - t}ms`)
 
     const content = response.choices[0]?.message?.content?.trim() ?? ''
-    // Extraer JSON aunque el modelo añada texto extra
     const match = content.match(/\{[\s\S]*\}/)
     if (match) {
       const parsed = JSON.parse(match[0])
       if (parsed.display && parsed.challenge) return parsed
     }
-  } catch { /* cae al fallback */ }
+    console.warn(`[seed-session/groq] JSON inválido type=${type}, usando fallback`)
+  } catch (err) {
+    console.warn(`[seed-session/groq] Error type=${type}, usando fallback:`, err instanceof Error ? err.message : err)
+  }
 
+  console.log(`[seed-session/groq] Usando contenido hardcoded para type=${type}`)
   return getFallback(type)
 }
 
@@ -148,6 +155,9 @@ export async function POST(req: NextRequest) {
   const { sessionId } = await req.json()
   if (!sessionId) return NextResponse.json({ error: 'Falta sessionId' }, { status: 400 })
 
+  console.log(`[seed-session] START sessionId=${sessionId}`)
+  console.log(`[seed-session] ENV check — GROQ_API_KEY=${process.env.GROQ_API_KEY ? 'SET' : 'MISSING'} SUPABASE_SERVICE_ROLE_KEY=${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'MISSING'}`)
+
   try {
     // Generar las 3 rondas del Nivel 1 en paralelo
     const roundConfigs: Array<{ round_number: number; output_type: 'react' | 'tool_calling' }> = [
@@ -156,9 +166,12 @@ export async function POST(req: NextRequest) {
       { round_number: 3, output_type: 'react' },
     ]
 
+    console.log(`[seed-session] Generando ${roundConfigs.length} retos con Groq...`)
+    const t0 = Date.now()
     const challenges = await Promise.all(
       roundConfigs.map(({ output_type }) => generateChallenge(output_type))
     )
+    console.log(`[seed-session] Retos generados en ${Date.now() - t0}ms`)
 
     const level1Rows = roundConfigs.map(({ round_number, output_type }, i) => ({
       session_id: sessionId,
@@ -172,20 +185,33 @@ export async function POST(req: NextRequest) {
     const level2Rows = LEVEL2_QUESTIONS.map((q) => ({ ...q, session_id: sessionId }))
     const level3Rows = LEVEL3_QUESTIONS.map((q) => ({ ...q, session_id: sessionId }))
 
-    // Insertar todo en paralelo
+    console.log(`[seed-session] Insertando en Supabase — L1:${level1Rows.length} L2:${level2Rows.length} L3:${level3Rows.length}`)
+    const t1 = Date.now()
     const [r1, r2, r3] = await Promise.all([
       supabaseAdmin.from('level1_rounds').insert(level1Rows),
       supabaseAdmin.from('level2_questions').insert(level2Rows),
       supabaseAdmin.from('level3_questions').insert(level3Rows),
     ])
+    console.log(`[seed-session] Inserts completados en ${Date.now() - t1}ms`)
 
-    if (r1.error) throw new Error(`level1: ${r1.error.message}`)
-    if (r2.error) throw new Error(`level2: ${r2.error.message}`)
-    if (r3.error) throw new Error(`level3: ${r3.error.message}`)
+    if (r1.error) {
+      console.error('[seed-session] ERROR level1_rounds:', r1.error)
+      throw new Error(`level1: ${r1.error.message}`)
+    }
+    if (r2.error) {
+      console.error('[seed-session] ERROR level2_questions:', r2.error)
+      throw new Error(`level2: ${r2.error.message}`)
+    }
+    if (r3.error) {
+      console.error('[seed-session] ERROR level3_questions:', r3.error)
+      throw new Error(`level3: ${r3.error.message}`)
+    }
 
+    console.log(`[seed-session] OK — sesión ${sessionId} lista`)
     return NextResponse.json({ ok: true })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error desconocido'
+    console.error(`[seed-session] FATAL sessionId=${sessionId}:`, message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

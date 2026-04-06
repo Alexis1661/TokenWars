@@ -1,16 +1,20 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
-// Cliente para el navegador (anon key — aplica RLS). Seguro en el cliente.
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Cliente para el navegador (anon key — aplica RLS). 
+// Usamos condicional para que no rompa el build de Next.js si las variables no están presentes.
+export const supabase = (supabaseUrl && supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : null as any
 
 // Cliente admin con service_role — SOLO para API Routes (servidor).
-// Se crea bajo demanda para que el bundle del cliente nunca lo instancie.
 export function getSupabaseAdmin() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY no configurada')
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error('Configuración de Supabase incompleta (Faltan env vars)')
+  }
   return createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
 }
 

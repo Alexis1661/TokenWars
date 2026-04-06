@@ -179,11 +179,12 @@ function LobbyScreen({ sessionId, hostCode, teams, onStart, starting }: {
 // ─────────────────────────────────────────────────────────
 // Pantalla 3 — Dashboard
 // ─────────────────────────────────────────────────────────
-function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound, activeQuestion2, onRevealQ2, revealingQ2, casinoAutomated, casinoRound, casinoStatus, casinoTimer, casinoBetsCount, casinoVotesCount, setCasinoAutomated, setCasinoStatus, setCasinoTimer, level3ChannelRef, onJumpToLevel, onDealCards, onSendQuestion }: {
+function GameDashboard({ session, teams, events, answeredTeamIds, currentQ2Answers, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound, activeQuestion2, onRevealQ2, revealingQ2, casinoAutomated, casinoRound, casinoStatus, casinoTimer, casinoBetsCount, casinoVotesCount, setCasinoAutomated, setCasinoStatus, setCasinoTimer, level3ChannelRef, onJumpToLevel, onDealCards, onSendQuestion }: {
   session: ReturnType<typeof usePublicGameData>['session']
   teams: ReturnType<typeof usePublicGameData>['teams']
   events: ReturnType<typeof useHostGameData>['events']
   answeredTeamIds: Set<string>
+  currentQ2Answers: number
   betsCount: number
   onAdvance: () => void
   advancing: boolean
@@ -504,7 +505,7 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <p className="text-xs text-right" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Orbitron', sans-serif" }}>
-                    {answeredTeamIds.size}/{teams.length} CONFIRMARON
+                    {currentQ2Answers}/{teams.length} CONFIRMARON
                   </p>
                   {activeQuestion2 && !activeQuestion2.started_at && (
                     <button 
@@ -670,7 +671,7 @@ function HostPageInner() {
 
 function HostSession({ sessionId }: { sessionId: string }) {
   const { session, teams, isLoading } = usePublicGameData(sessionId)
-  const { events, answeredTeamIds, betsCount } = useHostGameData(sessionId)
+  const { events, answeredTeamIds, answersByQuestion, betsCount } = useHostGameData(sessionId)
   const [advancing, setAdvancing] = useState(false)
   const [activeRoundNumber, setActiveRoundNumber] = useState<number | null>(null)
   const [endingRound, setEndingRound] = useState(false)
@@ -1056,14 +1057,10 @@ function HostSession({ sessionId }: { sessionId: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeQuestion2?.id, session?.status])
 
-  // Level 2 — per-question answer counter (se resetea al cambiar de pregunta)
-  const q2AnswerBaseRef = useRef(0)
-  const trackedQ2IdRef = useRef<string | null>(null)
-  if (activeQuestion2?.id !== trackedQ2IdRef.current) {
-    trackedQ2IdRef.current = activeQuestion2?.id ?? null
-    q2AnswerBaseRef.current = answeredTeamIds.size
-  }
-  const currentQ2Answers = answeredTeamIds.size - q2AnswerBaseRef.current
+  // Level 2 — respuestas de la pregunta activa (filtradas por question_id, no acumuladas globalmente)
+  const currentQ2Answers = activeQuestion2?.id
+    ? (answersByQuestion[activeQuestion2.id]?.size ?? 0)
+    : 0
 
   // Level 2 — auto-reveal cuando todos los equipos respondieron
   useEffect(() => {
@@ -1177,7 +1174,7 @@ function HostSession({ sessionId }: { sessionId: string }) {
   }
   return (
     <GameDashboard session={session} teams={teams} events={events}
-      answeredTeamIds={answeredTeamIds} betsCount={betsCount}
+      answeredTeamIds={answeredTeamIds} currentQ2Answers={currentQ2Answers} betsCount={betsCount}
       onAdvance={advanceLevel} advancing={advancing}
       onJumpToLevel={jumpToLevel}
       activeRoundNumber={activeRoundNumber}
