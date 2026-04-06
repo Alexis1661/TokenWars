@@ -31,6 +31,8 @@ from services.supabase_service import (
 )
 
 
+import os
+
 # ──────────────────────────────────────────────
 # App
 # ──────────────────────────────────────────────
@@ -41,10 +43,16 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Permitir llamadas desde el frontend de Next.js (localhost:3000)
+# Permitir llamadas desde el frontend de Next.js (Railway o local)
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    os.getenv("FRONTEND_URL", "*"), # Se recomienda proveer la URL real en producción
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

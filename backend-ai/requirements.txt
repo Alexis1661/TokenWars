@@ -1,6 +1,5 @@
 langchain-groq==1.1.2
 langchain-core==1.2.25
-langchain-classic==1.0.3
 langchain==1.2.15
 langchain-community==0.4.1
 groq==0.37.1
@@ -8,3 +7,4 @@ supabase==2.7.4
 python-dotenv==1.0.1
 fastapi==0.112.2
 uvicorn==0.30.6
+gunicorn==23.0.0
