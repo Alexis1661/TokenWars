@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { Timer } from '@/components/ui/Timer'
 import { Keyboard } from '@/components/ui/Keyboard'
 import { DecryptedText } from '@/components/ui/DecryptedText'
-import type { Level1Round } from '@/lib/types'
+import type { Level1Round, Team } from '@/lib/types'
+import { Scoreboard } from '@/components/scoreboard/Scoreboard'
 import Image from 'next/image'
 
 const ROUND_SECONDS = 45
@@ -195,18 +196,19 @@ function IntroScreen({ round, startedAt, duration, onDone }: {
 }
 
 // ─── Pantalla de resultados (3 s) ─────────────────────────
-function ResultsScreen({ tokens, breakdown, roundNumber }: {
+function ResultsScreen({ tokens, breakdown, roundNumber, onDone }: {
   tokens: number
   breakdown: Breakdown | null
   roundNumber: number
+  onDone: () => void
 }) {
-  const [countdown, setCountdown] = useState(3)
+  const [countdown, setCountdown] = useState(4)
 
   useEffect(() => {
-    if (countdown <= 0) return
+    if (countdown <= 0) { onDone(); return }
     const id = setTimeout(() => setCountdown(n => n - 1), 1000)
     return () => clearTimeout(id)
-  }, [countdown])
+  }, [countdown, onDone])
 
   const rows = breakdown ? [
     { label: breakdown.completed ? 'Ronda completada' : 'Progreso parcial', value: breakdown.base, show: true },
@@ -282,7 +284,7 @@ function ResultsScreen({ tokens, breakdown, roundNumber }: {
           initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.68rem', letterSpacing: '0.2em' }}
         >
-          SIGUIENTE RONDA EN {countdown}...
+          CLASIFICACIÓN EN {countdown}...
         </motion.p>
       </div>
     </motion.div>
@@ -292,7 +294,7 @@ function ResultsScreen({ tokens, breakdown, roundNumber }: {
 // ─── Componente principal ──────────────────────────────────
 interface Breakdown { base: number; accuracy: number; speed: number; bonus: number; completed: boolean }
 
-export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: string }) {
+export function TypeOrDie({ round, teamId, allTeams }: { round: Level1Round; teamId: string; allTeams: Team[] }) {
   // Parse trace si viene en JSON
   let tBefore = ''
   let tHighlight = round.technical_content || ''
@@ -309,7 +311,7 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
     }
   } catch { /* legacy */ }
 
-  const [phase, setPhase] = useState<'intro' | 'playing' | 'results'>('intro')
+  const [phase, setPhase] = useState<'intro' | 'playing' | 'results' | 'scoreboard'>('intro')
   const [typedText, setTypedText] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [identified, setIdentified] = useState<'react' | 'tool_calling' | null>(null)
@@ -639,7 +641,25 @@ export function TypeOrDie({ round, teamId }: { round: Level1Round; teamId: strin
                 tokens={tokensEarned}
                 breakdown={breakdown}
                 roundNumber={round.round_number}
+                onDone={() => setPhase('scoreboard')}
               />
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {phase === 'scoreboard' && (
+              <motion.div
+                key="scoreboard"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-40 flex flex-col items-center justify-center p-6"
+                style={{ background: 'rgba(3,7,18,0.97)', fontFamily: 'monospace' }}
+              >
+                <div className="w-full max-w-lg">
+                  <Scoreboard teams={allTeams} highlightTeamId={teamId} />
+                </div>
+              </motion.div>
             )}
           </AnimatePresence>
         </div>

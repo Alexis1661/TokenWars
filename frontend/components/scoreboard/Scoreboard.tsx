@@ -2,52 +2,54 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import type { Team } from '@/lib/types'
 
-const MEDAL = ['1', '2', '3']
-
 export function Scoreboard({ teams, highlightTeamId }: { teams: Team[]; highlightTeamId?: string }) {
+  const sorted = [...teams].sort((a, b) => b.token_balance - a.token_balance)
+
   return (
     <div className="w-full space-y-2">
-      <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '1.4rem', letterSpacing: '0.15em', textAlign: 'center' }}>
-        SCOREBOARD
+      <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: '#facc15', fontSize: '1.1rem', letterSpacing: '0.15em', textAlign: 'center' }}>
+        CLASIFICACIÓN
       </h2>
 
       <AnimatePresence>
-        {teams.map((team, i) => {
+        {sorted.map((team, i) => {
           const isMe = team.id === highlightTeamId
           return (
-            <motion.div key={team.id} layoutId={team.id}
-              initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            <motion.div
+              key={team.id}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ delay: i * 0.08 }}
+              className="flex items-center gap-4 rounded-xl px-4 py-3"
               style={{
-                background: isMe ? 'rgba(168,85,247,0.12)' : i === 0 ? 'rgba(168,85,247,0.07)' : 'var(--cup-bg2)',
-                border: `1px solid ${isMe ? 'var(--cup-gold)' : 'rgba(168,85,247,0.15)'}`,
-                boxShadow: isMe ? 'var(--glow-blue)' : '0 2px 8px rgba(0,0,0,0.4)',
-                borderRadius: 8,
+                background: isMe ? 'rgba(250,204,21,0.15)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${isMe ? '#facc15' : 'rgba(255,255,255,0.08)'}`,
               }}
-              className="flex items-center gap-3 px-4 py-2.5"
             >
-              <span className="text-xl w-8 text-center flex-shrink-0">
-                {i < 3 ? MEDAL[i] : <span style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-cream)', fontSize: '1rem' }}>{i + 1}</span>}
+              <span style={{
+                fontFamily: "'Orbitron', sans-serif",
+                fontSize: '1.2rem',
+                color: i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#a3a3a3',
+                width: 28,
+                textAlign: 'center',
+              }}>
+                {`#${i + 1}`}
               </span>
-              <span className="flex-1 font-bold truncate" style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-cream)', fontSize: '1.05rem' }}>
+              <span style={{ flex: 1, color: isMe ? '#facc15' : '#ffffff', fontWeight: isMe ? 700 : 400 }}>
                 {team.name}
-                {isMe && <span style={{ color: 'var(--cup-red)', fontSize: '0.75rem', marginLeft: 6 }}>(tú)</span>}
+                {isMe && <span style={{ fontSize: '0.7rem', color: '#a3a3a3', marginLeft: 8 }}>◀ TU</span>}
               </span>
-              <motion.div key={team.token_balance}
-                initial={{ scale: 1.4 }} animate={{ scale: 1 }} transition={{ duration: 0.4 }}
-                className="flex items-center gap-1">
-                <span style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-red)', fontSize: '1.2rem' }}>
-                  {team.token_balance.toLocaleString()}
-                </span>
-                <span style={{ color: 'var(--cup-gold-dark)', fontSize: '0.8rem', fontFamily: "'Orbitron', sans-serif" }}>T</span>
-              </motion.div>
+              <span style={{ fontFamily: "'Orbitron', sans-serif", color: '#facc15', fontWeight: 700 }}>
+                {team.token_balance} T
+              </span>
             </motion.div>
           )
         })}
       </AnimatePresence>
 
-      {teams.length === 0 && (
-        <p className="text-center py-6 text-sm" style={{ color: 'var(--cup-gold-dark)' }}>Esperando equipos...</p>
+      {sorted.length === 0 && (
+        <p className="text-center py-6 text-sm" style={{ color: '#a3a3a3' }}>Esperando equipos...</p>
       )}
     </div>
   )

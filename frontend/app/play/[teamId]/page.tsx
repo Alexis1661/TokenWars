@@ -234,8 +234,20 @@ export default function PlayPage() {
       {/* Contenido */}
       <div className={session.status === 'level1' || session.status === 'level3' ? '' : 'p-4'}>
         {session.status === 'lobby' && <LobbyScreen hostCode={session.host_code} />}
-        {session.status === 'level1' && activeRound && <TypeOrDie key={activeRound.id} round={activeRound} teamId={team.id} />}
-        {session.status === 'level1' && !activeRound && <WaitingScreen message="Esperando la próxima ronda..." />}
+        {session.status === 'level1' && activeRound && <TypeOrDie key={activeRound.id} round={activeRound} teamId={team.id} allTeams={teams} />}
+        {session.status === 'level1' && !activeRound && (
+          <div className="flex flex-col items-center gap-6 p-4 pt-8">
+            <p style={{ fontFamily: "'Orbitron', sans-serif", color: 'var(--cup-gold)', fontSize: '1rem', letterSpacing: '0.15em' }}>
+              CLASIFICACIÓN
+            </p>
+            <div className="w-full max-w-sm">
+              <Scoreboard teams={teams} highlightTeamId={team.id} />
+            </div>
+            <p className="text-sm animate-pulse" style={{ color: 'var(--cup-gold-dark)', fontFamily: "'Exo 2', sans-serif" }}>
+              Esperando la próxima ronda...
+            </p>
+          </div>
+        )}
         {session.status === 'level2' && activeQuestion2 && (
           <Millonario
             key={activeQuestion2.id}

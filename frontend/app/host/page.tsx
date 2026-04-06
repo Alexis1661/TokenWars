@@ -553,13 +553,13 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-mono text-white/70">Estado:</span>
                       <span className="text-sm font-bold uppercase tracking-widest" style={{ color: G.primary }}>
-                        {casinoStatus === 'idle' && '⌛ Esperando Inicio'}
-                        {casinoStatus === 'intro' && '🎬 Lore: El Casino'}
-                        {casinoStatus === 'seeding' && '🃏 Repartiendo Cartas...'}
-                        {casinoStatus === 'cards' && '🎲 Fase de Apuestas'}
-                        {casinoStatus === 'answering' && '📝 Votación Activa'}
-                        {casinoStatus === 'spinning' && '🎡 Ruleta Girando...'}
-                        {casinoStatus === 'revealed' && '💰 Resultados'}
+                        {casinoStatus === 'idle' && 'Esperando Inicio'}
+                        {casinoStatus === 'intro' && 'Lore: El Casino'}
+                        {casinoStatus === 'seeding' && 'Repartiendo Cartas...'}
+                        {casinoStatus === 'cards' && 'Fase de Apuestas'}
+                        {casinoStatus === 'answering' && 'Votacion Activa'}
+                        {casinoStatus === 'spinning' && 'Ruleta Girando...'}
+                        {casinoStatus === 'revealed' && 'Resultados'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -592,7 +592,7 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                         }}
                         className="cup-btn py-2 text-sm" style={{ background: '#3b82f6' }}
                       >
-                        🎬 Re-lanzar Intro
+                        Re-lanzar Intro
                       </button>
                       <button
                         onClick={() => onDealCards()}
@@ -826,13 +826,14 @@ function HostSession({ sessionId }: { sessionId: string }) {
     return () => { supabase.removeChannel(hostChan) };
   }, [session?.status]);
 
-  // Helper: enviar cartas almacenadas a todos los equipos (re-usable cada ronda)
-  // startedAt se incluye en el payload para que los equipos sincronicen su timer
+  // Helper: enviar cartas a todos los equipos vía nivel3_global (canal ya suscrito por el host).
+  // Usar canales privados sin suscripción previa falla silenciosamente en la primera ronda.
   const sendCardsToTeams = (teamCards: Record<string, string[]>, startedAt: number) => {
-    for (const [tid, cards] of Object.entries(teamCards)) {
-      supabase.channel(`private-team-${tid}`)
-        .send({ type: 'broadcast', event: 'cartas', payload: { cards, started_at: startedAt } });
-    }
+    level3ChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'cartas_all',
+      payload: { cards_by_team: teamCards, started_at: startedAt },
+    });
   };
 
   const ALL_CARDS = [
@@ -841,7 +842,6 @@ function HostSession({ sessionId }: { sessionId: string }) {
     'TRANSFERENCIA',
     'CARTA OSCURA',
     'FAROL',
-    'SEGURO CRUZADO',
   ];
 
   function shuffleSample(arr: string[], k: number): string[] {
@@ -854,10 +854,14 @@ function HostSession({ sessionId }: { sessionId: string }) {
   }
 
   // Helper: repartir 2 cartas aleatorias distintas a cada equipo
+  // Nunca repite las 2 cartas de la ronda anterior (excluye las previas del pool)
   const dealCards = async (startedAt: number = Date.now()) => {
     const teamCards: Record<string, string[]> = {};
     for (const t of teams) {
-      teamCards[t.id] = shuffleSample(ALL_CARDS, 2);
+      const prev = casinoTeamCardsRef.current[t.id] ?? [];
+      const pool = ALL_CARDS.filter((c) => !prev.includes(c));
+      // Si el pool filtrado tiene al menos 2 cartas úsalo; si no (edge case), usa todo el mazo
+      teamCards[t.id] = shuffleSample(pool.length >= 2 ? pool : ALL_CARDS, 2);
     }
     casinoTeamCardsRef.current = teamCards;
     sendCardsToTeams(teamCards, startedAt);
@@ -964,11 +968,9 @@ function HostSession({ sessionId }: { sessionId: string }) {
         const votes = casinoVotesRef.current;
         const currentTeams = teamsRef.current;
         const SHOWCASE_PER_TEAM_MS = 3000;
-        const SCOREBOARD_MS = 5000;
+        const SCOREBOARD_MS = 8000; // tiempo que ven el scoreboard antes de la próxima ronda
 
         const doSettle = async () => {
-          let settledResults: { team_id: string; earned: number }[] = [];
-
           if (q && Object.keys(votes).length > 0) {
             const teamBets = Object.entries(votes).map(([team_id, v]) => ({
               team_id, option: v.option, bet: v.bet, card: v.card,
@@ -980,40 +982,15 @@ function HostSession({ sessionId }: { sessionId: string }) {
                 body: JSON.stringify({ correct_option: q.respuesta_correcta, team_bets: teamBets }),
               }).then((r) => r.json());
               if (res.ok) {
-                settledResults = res.results ?? [];
                 level3ChannelRef.current?.send({
                   type: 'broadcast', event: 'settle_results',
-                  payload: { results: settledResults, correct: q.respuesta_correcta },
+                  payload: { results: res.results ?? [], correct: q.respuesta_correcta },
                 });
               }
             } catch { /* silencioso */ }
           }
 
-          // Construir resultados enriquecidos para la vitrina (incluye nombre, carta, etc.)
-          const enriched = currentTeams.map((t) => {
-            const vote = votes[t.id] ?? { option: null, bet: 0, card: null };
-            const settled = settledResults.find((r) => r.team_id === t.id);
-            return {
-              team_id: t.id,
-              team_name: t.name,
-              option: vote.option ?? null,
-              correct: q ? vote.option === q.respuesta_correcta : false,
-              bet: vote.bet,
-              card: vote.card,
-              earned: settled?.earned ?? 0,
-            };
-          });
-
-          // Broadcast vitrina sincronizada — equipos derivan el índice del equipo
-          // mostrado a partir del started_at (igual que L1/L2 derivan la fase)
-          const showcaseStartedAt = Date.now() + 2000; // 2 s de margen para que llegue el evento 'revealed'
-          level3ChannelRef.current?.send({
-            type: 'broadcast', event: 'team_showcase',
-            payload: { results: enriched, started_at: showcaseStartedAt, per_team_ms: SHOWCASE_PER_TEAM_MS },
-          });
-
-          // Esperar todo el showcase + scoreboard antes de iniciar la próxima ronda
-          const showcaseDuration = currentTeams.length * SHOWCASE_PER_TEAM_MS + SCOREBOARD_MS;
+          // Esperar que los equipos vean el resultado + scoreboard antes de la próxima ronda
           setTimeout(() => {
             if (casinoRound < 4) {
               questionSentRef.current = false;
@@ -1028,9 +1005,14 @@ function HostSession({ sessionId }: { sessionId: string }) {
               setCasinoTimer(30);
               dealCards(nextStartedAt);
             } else {
+              // Todas las rondas completadas → terminar el juego automáticamente
               setCasinoStatus('idle');
+              supabase.from('game_sessions').update({
+                status: 'finished',
+                ended_at: new Date().toISOString(),
+              }).eq('id', sessionId);
             }
-          }, 2000 + showcaseDuration);
+          }, SCOREBOARD_MS);
         };
 
         level3ChannelRef.current?.send({ type: 'broadcast', event: 'revealed', payload: {} });
@@ -1045,7 +1027,7 @@ function HostSession({ sessionId }: { sessionId: string }) {
   // ── Efecto 2: COUNTDOWN — separado para que la limpieza siempre funcione ─
   useEffect(() => {
     if (!session || session.status !== 'level3' || !casinoAutomated) return;
-    if (!['cards', 'answering'].includes(casinoStatus) || casinoTimer <= 0) return;
+    if (!['intro', 'cards', 'answering'].includes(casinoStatus) || casinoTimer <= 0) return;
 
     const id = setInterval(() => setCasinoTimer((t) => t - 1), 1000);
     return () => clearInterval(id);
@@ -1061,6 +1043,52 @@ function HostSession({ sessionId }: { sessionId: string }) {
     })
     setRevealingQ2(false)
   }
+  // Ref estable para usar en efectos sin incluirlo como dep
+  const revealQ2Ref = useRef(revealCurrentQuestion2)
+  useEffect(() => { revealQ2Ref.current = revealCurrentQuestion2 })
+
+  // Level 2 — auto-start: cuando carga una pregunta sin started_at, iniciarla
+  useEffect(() => {
+    if (session?.status !== 'level2' || !activeQuestion2 || activeQuestion2.started_at) return
+    supabase.from('level2_questions')
+      .update({ started_at: new Date().toISOString() })
+      .eq('id', activeQuestion2.id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeQuestion2?.id, session?.status])
+
+  // Level 2 — per-question answer counter (se resetea al cambiar de pregunta)
+  const q2AnswerBaseRef = useRef(0)
+  const trackedQ2IdRef = useRef<string | null>(null)
+  if (activeQuestion2?.id !== trackedQ2IdRef.current) {
+    trackedQ2IdRef.current = activeQuestion2?.id ?? null
+    q2AnswerBaseRef.current = answeredTeamIds.size
+  }
+  const currentQ2Answers = answeredTeamIds.size - q2AnswerBaseRef.current
+
+  // Level 2 — auto-reveal cuando todos los equipos respondieron
+  useEffect(() => {
+    if (
+      session?.status !== 'level2' ||
+      !activeQuestion2?.started_at ||
+      activeQuestion2.revealed_at ||
+      teams.length === 0 ||
+      currentQ2Answers < teams.length
+    ) return
+    revealQ2Ref.current()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentQ2Answers, teams.length, activeQuestion2?.id, activeQuestion2?.started_at, activeQuestion2?.revealed_at, session?.status])
+
+  // Level 2 — auto-reveal cuando expira el timer
+  useEffect(() => {
+    if (session?.status !== 'level2' || !activeQuestion2?.started_at || activeQuestion2.revealed_at) return
+    const INTRO_MS = activeQuestion2.question_number === 1 ? 15000 : 0
+    const expireAt = new Date(activeQuestion2.started_at).getTime() + INTRO_MS + 30000
+    const delay = expireAt - Date.now()
+    if (delay <= 0) { revealQ2Ref.current(); return }
+    const id = setTimeout(() => revealQ2Ref.current(), delay)
+    return () => clearTimeout(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeQuestion2?.id, activeQuestion2?.started_at, activeQuestion2?.revealed_at, session?.status])
 
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--cup-bg)' }}>

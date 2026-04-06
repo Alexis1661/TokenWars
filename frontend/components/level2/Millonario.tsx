@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import type { Level2Question, AnswerOption, JokerType, Team } from '@/lib/types'
 import Image from 'next/image'
 import { Timer } from '@/components/ui/Timer'
+import { Scoreboard } from '@/components/scoreboard/Scoreboard'
 
 const G = {
   primary: '#facc15',
@@ -148,8 +149,16 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
   const [spyTargetLocked, setSpyTargetLocked] = useState(false)
   const spyChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const [showSpyPicker, setShowSpyPicker] = useState(false)
+  const [showScoreboard, setShowScoreboard] = useState(false)
 
   const handleLockRef = useRef<() => void>(() => {})
+
+  // Mostrar scoreboard 4s después de revelar la respuesta
+  useEffect(() => {
+    if (!revealed) { setShowScoreboard(false); return }
+    const id = setTimeout(() => setShowScoreboard(true), 4000)
+    return () => clearTimeout(id)
+  }, [revealed])
 
   // SINCRONIZACIÓN DE FASE POR TIEMPO
   useEffect(() => {
@@ -475,20 +484,9 @@ export function Millonario({ question, team, allTeams, revealed, correctAnswers 
           </footer>
 
           <AnimatePresence>
-            {revealed && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900/80 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl">
-                <div className="bg-slate-800/50 px-6 py-2 border-b border-slate-700 font-mono text-[10px] text-slate-400 tracking-[0.3em]">RESUMEN RONDA</div>
-                <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {allTeams.map(t => {
-                    const ans = correctAnswers[t.id], correct = ans === question.correct_option, isMe = t.id === team.id
-                    return (
-                      <div key={t.id} className={`p-3 rounded-xl border ${isMe ? 'bg-blue-900/20 border-blue-500/40' : 'bg-slate-800/30 border-slate-700'}`}>
-                        <p className={`text-[10px] mb-1 truncate ${isMe ? 'text-blue-300 font-bold' : 'text-slate-400'}`}>{isMe && '▸ '}{t.name}</p>
-                        <p className={`text-lg font-orbitron ${!ans ? 'text-slate-600' : correct ? 'text-green-500' : 'text-red-500'}`}>{!ans ? '--' : `${ans.toUpperCase()} ${correct ? '(OK)' : '(X)'}`}</p>
-                      </div>
-                    )
-                  })}
-                </div>
+            {showScoreboard && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4">
+                <Scoreboard teams={allTeams} highlightTeamId={team.id} />
               </motion.div>
             )}
           </AnimatePresence>
