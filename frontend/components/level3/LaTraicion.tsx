@@ -1,9 +1,10 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { SpinWheel, SpinWheelRef } from '@/components/ui/SpinWheel'
 import { PlayingCard } from '@/components/ui/PlayingCard'
+import { Timer } from '@/components/ui/Timer'
 import type { Team } from '@/lib/types'
 
 const G = {
@@ -51,10 +52,154 @@ function normaliseQuestion(q: any): QuestionPayload {
 
 type Phase =
   | 'idle'
+  | 'intro'
   | 'cards'
   | 'answering'
   | 'spinning'
   | 'revealed'
+  | 'showcase'
+  | 'scoreboard'
+  | 'final_decision'
+  | 'voting_punishment'
+  | 'punishment_results'
+
+// ─── Intro (Lore) ──────────────────────────────
+interface IntroProps {
+  startedAt: number
+  duration: number
+  onDone: () => void
+}
+
+function IntroScreen({ startedAt, duration, onDone }: IntroProps) {
+  const [cd, setCd] = useState(duration)
+  const onDoneRef = useRef(onDone)
+  useEffect(() => { onDoneRef.current = onDone }, [onDone])
+
+  useEffect(() => {
+    const tick = () => {
+      const elapsed = (Date.now() - startedAt) / 1000
+      const left = Math.max(0, Math.ceil(duration - elapsed))
+      setCd(left)
+      if (left <= 0) onDoneRef.current()
+    }
+    tick()
+    const id = setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [startedAt, duration])
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[120] flex overflow-y-auto p-4 md:p-8"
+      style={{ background: '#020617', fontFamily: "'Exo 2', sans-serif" }}
+    >
+      <div className="fixed inset-0 pointer-events-none opacity-20" style={{
+        backgroundImage: 'radial-gradient(circle at center, #1e293b 0%, #020617 100%)',
+      }} />
+      
+      <div className="relative z-10 m-auto flex flex-col items-center gap-6 w-full max-w-4xl py-4">
+        
+        <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ color: G.dim, fontSize: '0.72rem', letterSpacing: '0.2em' }}>
+            TOKEN_WARS / NIVEL_3 / EL_CASINO_DE_LA_TRAICIÓN
+          </span>
+          <motion.span
+            key={cd}
+            initial={{ scale: 1.4, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            style={{ color: cd <= 3 ? G.error : G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.4rem' }}
+          >
+            [{cd.toString().padStart(2, '0')}]
+          </motion.span>
+        </div>
+
+        <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.8rem', textAlign: 'center', textShadow: '0 0 10px rgba(250,204,21,0.4)' }}>
+          EL CASINO DE LA TRAICIÓN
+        </h2>
+
+        <div className="flex flex-col md:flex-row gap-6 w-full">
+          <div className="md:w-[55%] flex flex-col gap-4" style={{ background: '#1e293b', border: `1px solid rgba(255,255,255,0.1)`, borderRadius: 8, padding: '20px' }}>
+            <p style={{ color: G.primary, fontSize: '0.68rem', letterSpacing: '0.2em' }}>{'>'} LA ÚLTIMA APUESTA</p>
+            <div className="w-full rounded-md overflow-hidden" style={{ border: `1px solid rgba(255,255,255,0.1)` }}>
+              <img src="/images/casino.png" alt="David en el Casino" style={{ width: '100%', height: 'auto', display: 'block', filter: 'grayscale(0.5) contrast(1.1)' }} />
+            </div>
+            <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', lineHeight: 1.65 }}>
+              Inspirado (u obsesionado) por los premios de <em>"¿Quién quiere ser Millonario?"</em>, David decidió que la teoría no era suficiente. Convencido de que su conocimiento del azar es superior, terminó en los rincones oscuros del <strong>Casino de la Traición</strong>. Aquí, los tokens no solo se ganan con respuestas; se arriesgan en la ruleta y se defienden con honor... o con una puñalada por la espalda.
+            </p>
+          </div>
+
+          <div className="md:w-[45%] flex flex-col gap-4">
+            <div className="flex items-center justify-center py-2">
+              <div className="relative" style={{ width: 80, height: 80 }}>
+                <svg className="-rotate-90" width="80" height="80" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+                  <motion.circle cx="40" cy="40" r="32" fill="none" strokeWidth="4" strokeLinecap="round"
+                    stroke={G.primary} strokeDasharray={2 * Math.PI * 32}
+                    initial={{ strokeDashoffset: 0 }}
+                    animate={{ strokeDashoffset: 2 * Math.PI * 32 }}
+                    transition={{ duration: duration, ease: 'linear' }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '1.2rem' }}>{cd}</span>
+                </div>
+              </div>
+            </div>
+            {[
+              { title: 'OBJETIVO', body: 'Usa tus tokens para apostar en la ruleta del Croupier. Cada acierto técnico multiplica tu apuesta, pero un fallo en estos rincones clandestinos puede ser devastador.' },
+              { title: 'CARTAS DE PODER', body: 'Al inicio de cada ronda recibirás cartas únicas. Úsalas sabiamente para doblar tus ganancias, protegerte de la bancarrota o espiar las jugadas de tus rivales.' },
+              { title: 'TRAICIÓN FINAL', body: 'Al concluir las rondas, los líderes deberán enfrentar el dilema moral: ¿Compartirán el botín con la clase o intentarán robarlo todo arriesgándose al castigo eterno?' },
+            ].map(({ title, body }) => (
+              <div key={title} style={{ background: '#1e293b', border: `1px solid rgba(255,255,255,0.1)`, borderRadius: 8, padding: '16px 20px' }}>
+                <p style={{ color: G.primary, fontSize: '0.65rem', letterSpacing: '0.2em', marginBottom: 6 }}>{'>'} {title}</p>
+                <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', lineHeight: 1.6 }}>{body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Lluvia de monedas ─────────────────────────
+function CoinRain() {
+  const coins = useMemo(() => Array.from({ length: 28 }, (_, i) => ({
+    id: i,
+    x: 3 + Math.random() * 94,
+    delay: Math.random() * 1.2,
+    duration: 0.8 + Math.random() * 0.7,
+    size: 1.1 + Math.random() * 0.7,
+    rotate: Math.random() * 360,
+  })), [])
+  return (
+    <div className="fixed inset-0 pointer-events-none z-40 overflow-hidden">
+      {coins.map((c) => (
+        <motion.div
+          key={c.id}
+          initial={{ y: -50, opacity: 1, rotate: c.rotate }}
+          animate={{ y: '110vh', opacity: [1, 1, 0.6, 0], rotate: c.rotate + 180 }}
+          transition={{ duration: c.duration, delay: c.delay, ease: [0.3, 0, 0.9, 1] }}
+          style={{ position: 'absolute', top: 0, left: `${c.x}%`, fontSize: `${c.size}rem`, userSelect: 'none' }}
+        >
+          🪙
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
+const LA_TRAICION_INTRO_SECONDS = 15;
+
+interface ShowcaseResult {
+  team_id: string
+  team_name: string
+  option: string | null
+  correct: boolean
+  bet: number
+  card: string | null
+  earned: number
+}
 
 interface LaTraicionProps {
   team: Team
@@ -62,7 +207,9 @@ interface LaTraicionProps {
 }
 
 export function LaTraicion({ team, allTeams }: LaTraicionProps) {
-  const [phase, setPhase] = useState<Phase>('idle')
+  // Intro arranca inmediatamente al montar (no depende de broadcast que puede perderse)
+  const [introStartedAt, setIntroStartedAt] = useState<number>(() => Date.now())
+  const [phase, setPhase] = useState<Phase>('intro')
   const [question, setQuestion] = useState<QuestionPayload | null>(null)
 
   // Apuesta y carta — se fijan en 'cards', se usan en 'answering'
@@ -77,7 +224,9 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
   // Cartas
   const [myCards, setMyCards] = useState<string[]>([])
   const [cardsRevealed, setCardsRevealed] = useState(false) // auto-flip tras 1.5s
-  const [betTimer, setBetTimer] = useState(0)
+  // Timestamps de inicio de fase (sincronizan el timer con el host, igual que L1/L2)
+  const [betStartedAt, setBetStartedAt] = useState<number | null>(null)
+  const [answerStartedAt, setAnswerStartedAt] = useState<number | null>(null)
 
   // Ruleta
   const wheelRef = useRef<SpinWheelRef>(null)
@@ -86,14 +235,38 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
   // Resultado del settle (tokens ganados/perdidos esta ronda)
   const [settleResult, setSettleResult] = useState<{ earned: number } | null>(null)
 
-  // Countdown durante la fase answering
-  const [answerTimer, setAnswerTimer] = useState(0)
+  // Vitrina post-ronda: resultados de todos los equipos (sincronizada con host)
+  const [showcaseData, setShowcaseData] = useState<{
+    results: ShowcaseResult[]
+    started_at: number
+    per_team_ms: number
+  } | null>(null)
+  const [showcaseIndex, setShowcaseIndex] = useState(0)
 
   // Pista críptica (CARTA OSCURA) — mostrar como banner en lugar de alert
   const [pistaOscura, setPistaOscura] = useState<string | null>(null)
+  // Contador animado para ganancias + lluvia de monedas
+  const [displayedEarned, setDisplayedEarned] = useState(0)
+  const [showCoinRain, setShowCoinRain] = useState(false)
 
   // Sync ref
   useEffect(() => { questionRef.current = question }, [question])
+
+  // Contador animado de tokens ganados/perdidos (easing cuadrático)
+  useEffect(() => {
+    if (!settleResult) { setDisplayedEarned(0); setShowCoinRain(false); return }
+    const target = settleResult.earned
+    setShowCoinRain(target > 0)
+    const duration = 900
+    const start = Date.now()
+    const id = setInterval(() => {
+      const p = Math.min(1, (Date.now() - start) / duration)
+      const ease = p < 0.5 ? 2 * p * p : -1 + (4 - 2 * p) * p
+      setDisplayedEarned(Math.round(target * ease))
+      if (p >= 1) { setDisplayedEarned(target); clearInterval(id) }
+    }, 30)
+    return () => clearInterval(id)
+  }, [settleResult])
 
   // Realtime subscriptions — estables durante todo el nivel
   useEffect(() => {
@@ -103,9 +276,11 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
         if (payload.payload?.cards) {
           setMyCards(payload.payload.cards)
           setCardsRevealed(false) // empieza boca abajo
-          setPhase('cards')
+          setPhase('cards')        // cancela la intro si aún estaba corriendo
           setBetConfirmed(false)
-          setBetTimer(30)
+          setShowcaseData(null) // limpiar vitrina de ronda anterior
+          // Usar el timestamp del host para sincronizar el timer (igual que L1/L2)
+          setBetStartedAt(payload.payload.started_at ?? Date.now())
           // Auto-flip todas las cartas después de 1.5s
           setTimeout(() => setCardsRevealed(true), 1500)
         }
@@ -129,8 +304,9 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
         setAnswerConfirmed(false)
         setSettleResult(null)
         setPhase('answering')
-        setAnswerTimer(30)
         setBetConfirmed(true) // auto-confirma si no lo hicieron antes
+        // Timestamp del host → todos los equipos tienen el mismo reloj de cuenta regresiva
+        setAnswerStartedAt(payload.payload.started_at ?? Date.now())
       })
       .on('broadcast', { event: 'settle_results' }, (payload) => {
         const myResult = (payload.payload?.results ?? []).find(
@@ -145,7 +321,33 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
         }
       })
       .on('broadcast', { event: 'revealed' }, () => {
-        setTimeout(() => setPhase('revealed'), 1000)
+        // Funcional update: solo transiciona si seguimos en 'spinning'
+        // Esto evita que este timeout sobreescriba 'showcase' si llega rápido después
+        setTimeout(() => setPhase((p) => (p === 'spinning' ? 'revealed' : p)), 1000)
+      })
+      .on('broadcast', { event: 'team_showcase' }, (payload) => {
+        const { results, started_at, per_team_ms } = payload.payload ?? {}
+        if (results && started_at) {
+          setShowcaseData({ results, started_at, per_team_ms: per_team_ms ?? 3000 })
+          setShowcaseIndex(0)
+          // No seteamos phase aquí — el tick lo hará cuando started_at llegue
+          // Esto evita flickering y deja ver 'revealed' hasta que la vitrina arranque
+        }
+      })
+      .on('broadcast', { event: 'nivel3_reset' }, () => {
+        // El host saltó a level3 mientras ya estábamos en level3 (DEV mode).
+        // LaTraicion no se desmonta (Realtime no dispara si status no cambia),
+        // así que reseteamos el estado manualmente y volvemos a mostrar la intro.
+        setIntroStartedAt(Date.now())
+        setPhase('intro')
+        setShowcaseData(null)
+        setQuestion(null)
+        setBetConfirmed(false)
+        setAnswerConfirmed(false)
+        setSelectedOption(null)
+        setSettleResult(null)
+        setMyCards([])
+        setPistaOscura(null)
       })
       .subscribe()
 
@@ -155,23 +357,53 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
     }
   }, [team.id])
 
-  // Countdown timer durante fase 'cards'
-  useEffect(() => {
-    if (phase !== 'cards' || betTimer <= 0) return
-    const id = setInterval(() => setBetTimer((t) => t - 1), 1000)
-    return () => clearInterval(id)
-  }, [phase, betTimer])
+  // Ref para leer la phase actual sin incluirla como dep del efecto de vitrina
+  const phaseRef = useRef<Phase>('idle')
+  useEffect(() => { phaseRef.current = phase }, [phase])
 
-  // Countdown timer durante fase 'answering'
+  // Progresión de vitrina — derivada del started_at del host (sin timers locales)
+  // Solo depende de showcaseData para evitar bucles de rerun al cambiar phase
   useEffect(() => {
-    if (phase !== 'answering' || answerTimer <= 0) return
-    const id = setInterval(() => setAnswerTimer((t) => t - 1), 1000)
+    if (!showcaseData) return
+    const { started_at, per_team_ms, results } = showcaseData
+    const totalTeams = results.length
+    const scoreboardEndMs = totalTeams * per_team_ms + 5000
+
+    const tick = () => {
+      const p = phaseRef.current
+      // Parar si el host ya inició una nueva ronda (cards/answering/idle)
+      if (p === 'cards' || p === 'answering' || p === 'idle' || p === 'spinning') return
+
+      const elapsed = Date.now() - started_at
+      if (elapsed < 0) return // aún no empezó (el started_at incluye margen de 2s)
+
+      const idx = Math.floor(elapsed / per_team_ms)
+      if (idx < totalTeams) {
+        if (p !== 'showcase') setPhase('showcase')
+        setShowcaseIndex(idx)
+      } else if (elapsed < scoreboardEndMs) {
+        if (p !== 'scoreboard') setPhase('scoreboard')
+      }
+      // Después del scoreboard el host enviará 'cartas' que cambia la fase
+    }
+    tick()
+    const id = setInterval(tick, 250)
     return () => clearInterval(id)
-  }, [phase, answerTimer])
+  }, [showcaseData])
 
   const MIN_BET = 50
   const maxBet = Math.max(MIN_BET, Math.floor(team.token_balance * 0.4))
   const canBet = team.token_balance >= MIN_BET
+
+  // Refs para que handleBetExpire no capture valores obsoletos
+  const betAmountRef = useRef(betAmount)
+  const selectedCardRef = useRef(selectedCard)
+  const betConfirmedRef = useRef(betConfirmed)
+  const canBetRef = useRef(canBet)
+  useEffect(() => { betAmountRef.current = betAmount }, [betAmount])
+  useEffect(() => { selectedCardRef.current = selectedCard }, [selectedCard])
+  useEffect(() => { betConfirmedRef.current = betConfirmed }, [betConfirmed])
+  useEffect(() => { canBetRef.current = canBet }, [canBet])
 
   const confirmBet = async () => {
     setBetConfirmed(true)
@@ -181,6 +413,19 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
       payload: { team_id: team.id, bet: betAmount, card: selectedCard },
     })
   }
+
+  // Auto-confirmar apuesta cuando el timer expira (para no bloquear al host)
+  const handleBetExpire = useCallback(() => {
+    if (!betConfirmedRef.current && canBetRef.current) {
+      setBetConfirmed(true)
+      supabase.channel('nivel3_host').send({
+        type: 'broadcast',
+        event: 'bet_confirmed',
+        payload: { team_id: team.id, bet: betAmountRef.current, card: selectedCardRef.current },
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [team.id])
 
   const confirmAnswer = async () => {
     if (!selectedOption) return
@@ -202,23 +447,44 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
   return (
     <div
       className="w-full flex flex-col items-center px-4 py-4 overflow-y-auto"
-      style={{ background: G.bg, height: 'calc(100vh - 56px)', fontFamily: "'Exo 2', sans-serif", color: '#F5F5F5' }}
+      style={{ background: G.bg, height: 'calc(100vh - 56px)', fontFamily: "'Exo 2', sans-serif", color: '#F5F5F5', position: 'relative' }}
     >
-      <div className="w-full flex flex-col items-center">
+      {/* Viñeta de atmósfera casino */}
+      <div className="fixed inset-0 pointer-events-none z-0"
+        style={{ background: 'radial-gradient(ellipse at 50% 40%, transparent 35%, rgba(0,0,0,0.82) 100%)' }} />
 
+      {/* Lluvia de monedas al ganar */}
+      <AnimatePresence>{showCoinRain && <CoinRain key="coinrain" />}</AnimatePresence>
+
+      <AnimatePresence>
+        {phase === 'intro' && (
+          <IntroScreen
+            key={introStartedAt}
+            startedAt={introStartedAt}
+            duration={LA_TRAICION_INTRO_SECONDS}
+            onDone={() => setPhase('idle')}
+          />
+        )}
+      </AnimatePresence>
+
+      <div className="w-full flex flex-col items-center">
 
       {/* ── IDLE ── */}
       {phase === 'idle' && (
         <div className="flex-1 flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
-          <div
-            className="w-12 h-12 border-4 border-t-transparent rounded-full animate-spin"
-            style={{ borderColor: G.primary, borderTopColor: 'transparent' }}
-          />
-          <h2
+          <div style={{ position: 'relative', width: 64, height: 64 }}>
+            <div
+              className="w-16 h-16 border-4 border-t-transparent rounded-full animate-spin"
+              style={{ borderColor: G.primary, borderTopColor: 'transparent', boxShadow: `0 0 18px ${G.primary}80, 0 0 40px ${G.primary}30` }}
+            />
+          </div>
+          <motion.h2
+            animate={{ textShadow: [`0 0 8px ${G.primary}80`, `0 0 24px ${G.primary}`, `0 0 8px ${G.primary}80`] }}
+            transition={{ repeat: Infinity, duration: 2.5, ease: 'easeInOut' }}
             style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.5rem' }}
           >
             EL CROUPIER ESTÁ BARAJEANDO...
-          </h2>
+          </motion.h2>
           <p style={{ color: G.dim }}>Esperando que el host inicie la ronda</p>
         </div>
       )}
@@ -238,30 +504,71 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
             </p>
           </div>
 
-          {/* Timer */}
-          {betTimer > 0 && (
+          {/* Timer — sincronizado con el host (mismo timestamp) */}
+          {betStartedAt && !betConfirmed && (
             <div className="flex items-center justify-center gap-3">
-              <span style={{ color: betTimer <= 10 ? G.error : G.dim, fontFamily: 'monospace', fontSize: '1.2rem' }}>
-                {betTimer}s para apostar
+              <Timer
+                seconds={30}
+                startedAt={betStartedAt}
+                onExpire={handleBetExpire}
+              />
+              <span style={{ color: G.dim, fontFamily: 'monospace', fontSize: '1rem' }}>
+                para apostar
               </span>
             </div>
           )}
 
-          {/* Bet slider */}
+          {/* Bet panel — fichas de casino + slider */}
           <div
-            className="rounded-xl p-5 flex flex-col gap-3"
-            style={{ background: G.panel, border: `1px solid ${G.border}40` }}
+            className="rounded-xl p-5 flex flex-col gap-4"
+            style={{ background: `radial-gradient(ellipse at 30% 20%, #1a2234, ${G.panel})`, border: `1px solid ${G.border}50`, boxShadow: `inset 0 0 30px rgba(0,0,0,0.4)` }}
           >
             <div className="flex justify-between items-center">
-              <span style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '0.85rem' }}>
+              <span style={{ color: G.primary, fontFamily: "'Orbitron', sans-serif", fontSize: '0.85rem', letterSpacing: '0.12em' }}>
                 APUESTA
               </span>
-              <span style={{ color: '#fff', fontFamily: "'Orbitron', sans-serif", fontSize: '1.4rem' }}>
+              <motion.span
+                key={betAmount}
+                initial={{ scale: 1.2, color: '#fff' }}
+                animate={{ scale: 1, color: G.primary }}
+                style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '1.6rem', fontWeight: 700, textShadow: `0 0 12px ${G.primary}60` }}
+              >
                 {betAmount} T
-              </span>
+              </motion.span>
             </div>
             {canBet ? (
               <>
+                {/* Fichas de casino */}
+                <div className="flex gap-3 flex-wrap justify-center">
+                  {Array.from(new Set([50, 100, 200, 500].filter(v => v < maxBet))).concat([maxBet]).map((chip) => {
+                    const active = betAmount === chip
+                    return (
+                      <motion.button
+                        key={chip}
+                        whileTap={{ scale: 0.88 }}
+                        whileHover={!betConfirmed ? { scale: 1.08 } : {}}
+                        onClick={() => !betConfirmed && setBetAmount(chip)}
+                        disabled={betConfirmed}
+                        style={{
+                          width: 56, height: 56, borderRadius: '50%',
+                          background: active ? G.primary : '#12102a',
+                          border: `3px dashed ${active ? G.primary : 'rgba(255,215,0,0.35)'}`,
+                          color: active ? '#000' : G.primary,
+                          fontFamily: "'Orbitron', sans-serif",
+                          fontSize: chip === maxBet ? '0.55rem' : '0.62rem',
+                          fontWeight: 700,
+                          cursor: betConfirmed ? 'default' : 'pointer',
+                          boxShadow: active ? `0 0 14px ${G.primary}90, 0 0 30px ${G.primary}40` : '0 2px 8px rgba(0,0,0,0.5)',
+                          transition: 'background 0.15s, box-shadow 0.15s',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {chip === maxBet ? 'MAX' : `${chip}T`}
+                      </motion.button>
+                    )
+                  })}
+                </div>
+                {/* Slider fino como fallback */}
                 <input
                   type="range"
                   min={MIN_BET}
@@ -274,7 +581,7 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
                 />
                 <div className="flex justify-between text-xs" style={{ color: G.dim }}>
                   <span>{MIN_BET} T (mín)</span>
-                  <span>{maxBet} T (máx — 40% de tu saldo)</span>
+                  <span>{maxBet} T (máx 40%)</span>
                 </div>
               </>
             ) : (
@@ -326,7 +633,8 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
           {/* Confirm */}
           {!betConfirmed ? (
             <motion.button
-              whileTap={{ scale: 0.96 }}
+              whileTap={{ scale: 0.95 }}
+              whileHover={{ boxShadow: `0 0 12px ${G.primary}, 0 0 30px ${G.primary}90, 0 0 60px ${G.primary}40` }}
               onClick={confirmBet}
               disabled={!canBet}
               style={{
@@ -339,7 +647,8 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
                 borderRadius: 12,
                 border: 'none',
                 cursor: 'pointer',
-                boxShadow: `0 0 20px ${G.primary}60`,
+                boxShadow: `0 0 8px ${G.primary}80, 0 0 20px ${G.primary}40`,
+                letterSpacing: '0.05em',
               }}
             >
               CONFIRMAR APUESTA — {betAmount} T{selectedCard ? ` + ${selectedCard}` : ''}
@@ -422,19 +731,28 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
           </div>
 
           <div className="flex flex-col md:flex-row w-full gap-8 items-start justify-center">
-            {/* Ruleta */}
+            {/* Ruleta con marco dorado */}
             <div className="flex-shrink-0 flex flex-col items-center gap-2">
-              <SpinWheel
-                ref={wheelRef}
-                options={[
-                  question.opciones.A,
-                  question.opciones.B,
-                  question.opciones.C,
-                  question.opciones.D,
-                ]}
-                onStop={handleWheelStop}
-                size={280}
-              />
+              <div style={{
+                borderRadius: '50%',
+                padding: 3,
+                background: 'conic-gradient(#FFD700 0deg, #b8860b 90deg, #FFD700 180deg, #8B6914 270deg, #FFD700 360deg)',
+                boxShadow: '0 0 28px rgba(255,215,0,0.55), 0 0 60px rgba(255,215,0,0.18), inset 0 0 12px rgba(0,0,0,0.4)',
+              }}>
+                <div style={{ borderRadius: '50%', overflow: 'hidden', display: 'block', lineHeight: 0 }}>
+                  <SpinWheel
+                    ref={wheelRef}
+                    options={[
+                      question.opciones.A,
+                      question.opciones.B,
+                      question.opciones.C,
+                      question.opciones.D,
+                    ]}
+                    onStop={handleWheelStop}
+                    size={280}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Panel de control */}
@@ -459,20 +777,11 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
 
               {phase === 'answering' && (
                 <>
-                  {/* Countdown */}
-                  {answerTimer > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span style={{ color: G.dim, fontSize: '0.8rem' }}>Tiempo:</span>
-                      <span
-                        style={{
-                          fontFamily: 'monospace',
-                          fontSize: '1.4rem',
-                          fontWeight: 700,
-                          color: answerTimer <= 10 ? G.error : G.primary,
-                        }}
-                      >
-                        {answerTimer}s
-                      </span>
+                  {/* Countdown — sincronizado con el host */}
+                  {answerStartedAt && !answerConfirmed && (
+                    <div className="flex items-center gap-3">
+                      <Timer seconds={30} startedAt={answerStartedAt} />
+                      <span style={{ color: G.dim, fontSize: '0.85rem' }}>para responder</span>
                     </div>
                   )}
                   <p style={{ color: G.dim, fontSize: '0.85rem' }}>
@@ -583,23 +892,37 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
                   {settleResult && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
+                      animate={settleResult.earned < -100
+                        ? { opacity: 1, scale: 1, x: [0, -14, 14, -10, 10, -6, 6, -3, 3, 0] }
+                        : { opacity: 1, scale: 1 }
+                      }
+                      transition={{ duration: settleResult.earned < -100 ? 0.55 : 0.3 }}
                       className="rounded-xl p-4 text-center flex flex-col gap-1"
                       style={{
-                        background: settleResult.earned >= 0 ? `${G.green}15` : `${G.error}15`,
+                        background: settleResult.earned >= 0
+                          ? `radial-gradient(ellipse at 50% 0%, ${G.green}30, ${G.green}08)`
+                          : `radial-gradient(ellipse at 50% 0%, ${G.error}30, ${G.error}08)`,
                         border: `2px solid ${settleResult.earned >= 0 ? G.green : G.error}`,
+                        boxShadow: settleResult.earned >= 0
+                          ? `0 0 20px ${G.green}40`
+                          : `0 0 20px ${G.error}40`,
                       }}
                     >
-                      <span
+                      <motion.span
+                        key={displayedEarned}
                         style={{
-                          fontSize: '2rem',
+                          fontSize: '2.2rem',
                           fontFamily: "'Orbitron', sans-serif",
                           fontWeight: 700,
                           color: settleResult.earned >= 0 ? G.green : '#f87171',
+                          textShadow: settleResult.earned >= 0
+                            ? `0 0 12px ${G.green}80`
+                            : `0 0 12px ${G.error}80`,
+                          display: 'block',
                         }}
                       >
-                        {settleResult.earned >= 0 ? '+' : ''}{settleResult.earned} T
-                      </span>
+                        {displayedEarned >= 0 ? '+' : ''}{displayedEarned} T
+                      </motion.span>
                       {selectedCard && CARD_META[selectedCard] && (
                         <span style={{ fontSize: '0.8rem', color: G.dim }}>
                           {selectedCard} — {CARD_META[selectedCard].modifier}
@@ -615,7 +938,159 @@ export function LaTraicion({ team, allTeams }: LaTraicionProps) {
       )}
 
 
-      </div>{/* fin zona scrollable */}
+      {/* ── SHOWCASE — vitrina de resultados por equipo ── */}
+      {(phase === 'showcase' || phase === 'scoreboard') && showcaseData && (
+        <div className="w-full max-w-lg flex flex-col items-center gap-6 py-4">
+          <h2 style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontSize: '1.1rem', letterSpacing: '0.15em' }}>
+            RESULTADOS DE LA RONDA
+          </h2>
+
+          {/* Indicador de progreso — sincronizado con el host */}
+          <div className="flex gap-2">
+            {showcaseData.results.map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  width: 10, height: 10, borderRadius: '50%',
+                  background: i < showcaseIndex ? G.green : i === showcaseIndex && phase === 'showcase' ? G.primary : '#333',
+                  transition: 'background 0.3s',
+                }}
+              />
+            ))}
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: phase === 'scoreboard' ? G.primary : '#333', transition: 'background 0.3s' }} />
+          </div>
+
+          {/* Slide del equipo actual */}
+          <AnimatePresence mode="wait">
+            {phase === 'showcase' && (() => {
+              const r = showcaseData.results[showcaseIndex]
+              if (!r) return null
+              const meta = r.card ? CARD_META[r.card] : null
+              const isMe = r.team_id === team.id
+              return (
+                <motion.div
+                  key={showcaseIndex}
+                  initial={{ opacity: 0, x: 60 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -60 }}
+                  transition={{ duration: 0.35 }}
+                  className="w-full rounded-2xl p-6 flex flex-col gap-4"
+                  style={{
+                    background: G.panel,
+                    border: `2px solid ${isMe ? G.primary : 'rgba(255,255,255,0.12)'}`,
+                    boxShadow: isMe ? `0 0 24px ${G.primary}40` : 'none',
+                  }}
+                >
+                  {/* Cabecera equipo */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '1.2rem', color: isMe ? G.primary : '#fff' }}>
+                        {r.team_name}
+                      </span>
+                      {isMe && <span style={{ fontSize: '0.7rem', color: G.dim, marginLeft: 8 }}>◀ TÚ</span>}
+                    </div>
+                    <motion.span
+                      initial={{ scale: 0.5 }}
+                      animate={{ scale: 1 }}
+                      style={{
+                        fontFamily: "'Orbitron', sans-serif",
+                        fontSize: '1.8rem',
+                        fontWeight: 700,
+                        color: r.earned >= 0 ? G.green : '#f87171',
+                      }}
+                    >
+                      {r.earned >= 0 ? '+' : ''}{r.earned} T
+                    </motion.span>
+                  </div>
+
+                  {/* Fila de detalles */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="flex flex-col items-center gap-1 rounded-xl py-3" style={{ background: r.correct ? `${G.green}15` : `${G.error}15`, border: `1px solid ${r.correct ? G.green : G.error}` }}>
+                      <span style={{ fontSize: '1.4rem' }}>{r.correct ? '✓' : '✗'}</span>
+                      <span style={{ fontSize: '0.72rem', color: r.correct ? G.green : G.error, fontFamily: "'Orbitron', sans-serif" }}>
+                        {r.correct ? 'ACERTÓ' : r.option ? 'FALLÓ' : 'NO VOTÓ'}
+                      </span>
+                      {r.option && (
+                        <span style={{ fontSize: '0.8rem', color: G.dim }}>Resp: {r.option}</span>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-center gap-1 rounded-xl py-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <span style={{ fontSize: '1.4rem' }}>🪙</span>
+                      <span style={{ fontSize: '0.72rem', color: G.dim, fontFamily: "'Orbitron', sans-serif" }}>APOSTÓ</span>
+                      <span style={{ fontSize: '0.9rem', color: G.primary, fontWeight: 700 }}>{r.bet} T</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-1 rounded-xl py-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <span style={{ fontSize: '1.4rem' }}>{meta?.symbol ?? '?'}</span>
+                      <span style={{ fontSize: '0.72rem', color: G.dim, fontFamily: "'Orbitron', sans-serif" }}>CARTA</span>
+                      <span style={{ fontSize: '0.65rem', color: '#ccc', textAlign: 'center', lineHeight: 1.2 }}>
+                        {r.card ?? 'Ninguna'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Efecto de carta si la usó */}
+                  {meta && (
+                    <div className="text-center text-xs" style={{ color: meta.color, opacity: 0.85 }}>
+                      [{meta.symbol}] {meta.modifier}
+                    </div>
+                  )}
+                </motion.div>
+              )
+            })()}
+
+            {/* Scoreboard */}
+            {phase === 'scoreboard' && (
+              <motion.div
+                key="scoreboard"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                className="w-full flex flex-col gap-3"
+              >
+                <h3 style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, textAlign: 'center', fontSize: '1rem' }}>
+                  CLASIFICACIÓN ACTUAL
+                </h3>
+                {[...allTeams]
+                  .sort((a, b) => b.token_balance - a.token_balance)
+                  .map((t, i) => {
+                    const isMe = t.id === team.id
+                    const myResult = showcaseData.results.find((r) => r.team_id === t.id)
+                    return (
+                      <motion.div
+                        key={t.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.08 }}
+                        className="flex items-center gap-4 rounded-xl px-4 py-3"
+                        style={{
+                          background: isMe ? `${G.primary}15` : 'rgba(255,255,255,0.03)',
+                          border: `1px solid ${isMe ? G.primary : 'rgba(255,255,255,0.08)'}`,
+                        }}
+                      >
+                        <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: '1.2rem', color: i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : G.dim, width: 28, textAlign: 'center' }}>
+                          {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
+                        </span>
+                        <span style={{ flex: 1, color: isMe ? G.primary : '#fff', fontWeight: isMe ? 700 : 400 }}>
+                          {t.name}
+                        </span>
+                        {myResult && (
+                          <span style={{ fontSize: '0.8rem', color: myResult.earned >= 0 ? G.green : '#f87171', marginRight: 8 }}>
+                            {myResult.earned >= 0 ? '+' : ''}{myResult.earned} T
+                          </span>
+                        )}
+                        <span style={{ fontFamily: "'Orbitron', sans-serif", color: G.primary, fontWeight: 700 }}>
+                          {t.token_balance} T
+                        </span>
+                      </motion.div>
+                    )
+                  })}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      </div>
     </div>
   )
 }

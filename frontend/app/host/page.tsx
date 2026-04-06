@@ -179,7 +179,7 @@ function LobbyScreen({ sessionId, hostCode, teams, onStart, starting }: {
 // ─────────────────────────────────────────────────────────
 // Pantalla 3 — Dashboard
 // ─────────────────────────────────────────────────────────
-function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound, activeQuestion2, onRevealQ2, revealingQ2, casinoAutomated, casinoRound, casinoStatus, casinoTimer, casinoBetsCount, setCasinoAutomated, level3ChannelRef, onJumpToLevel, onDealCards, onSendQuestion }: {
+function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onAdvance, advancing, activeRoundNumber, onEndRound, endingRound, activeQuestion2, onRevealQ2, revealingQ2, casinoAutomated, casinoRound, casinoStatus, casinoTimer, casinoBetsCount, casinoVotesCount, setCasinoAutomated, setCasinoStatus, setCasinoTimer, level3ChannelRef, onJumpToLevel, onDealCards, onSendQuestion }: {
   session: ReturnType<typeof usePublicGameData>['session']
   teams: ReturnType<typeof usePublicGameData>['teams']
   events: ReturnType<typeof useHostGameData>['events']
@@ -198,7 +198,10 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
   casinoStatus: string
   casinoTimer: number
   casinoBetsCount: number
+  casinoVotesCount: number
   setCasinoAutomated: (v: boolean) => void
+  setCasinoStatus: (s: any) => void
+  setCasinoTimer: (t: number) => void
   level3ChannelRef: React.RefObject<any>
   onJumpToLevel: (target: SessionStatus) => void
   onDealCards: () => Promise<void>
@@ -550,26 +553,29 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-mono text-white/70">Estado:</span>
                       <span className="text-sm font-bold uppercase tracking-widest" style={{ color: G.primary }}>
-                        {casinoStatus === 'idle' && 'Esperando Inicio'}
-                        {casinoStatus === 'seeding' && 'Repartiendo Cartas...'}
-                        {casinoStatus === 'cards' && 'Equipos fijando apuesta'}
-                        {casinoStatus === 'answering' && 'Pregunta visible — votando'}
-                        {casinoStatus === 'spinning' && 'Ruleta Girando...'}
-                        {casinoStatus === 'revealed' && 'Resultados'}
+                        {casinoStatus === 'idle' && '⌛ Esperando Inicio'}
+                        {casinoStatus === 'intro' && '🎬 Lore: El Casino'}
+                        {casinoStatus === 'seeding' && '🃏 Repartiendo Cartas...'}
+                        {casinoStatus === 'cards' && '🎲 Fase de Apuestas'}
+                        {casinoStatus === 'answering' && '📝 Votación Activa'}
+                        {casinoStatus === 'spinning' && '🎡 Ruleta Girando...'}
+                        {casinoStatus === 'revealed' && '💰 Resultados'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-mono text-white/70">Ronda:</span>
                       <span className="text-lg font-orbitron text-yellow-500">{casinoRound} / 4</span>
                     </div>
-                    {(casinoStatus === 'cards' || casinoStatus === 'answering') && (
+                    {(casinoStatus === 'intro' || casinoStatus === 'cards' || casinoStatus === 'answering') && (
                       <div className="flex flex-col gap-1">
                         <div className="flex justify-between text-[10px] font-mono text-yellow-500/60 uppercase">
                           <span>{casinoTimer}s restantes</span>
-                          <span>{casinoStatus === 'cards' ? casinoBetsCount : Object.keys({}).length} / {teams.length} {casinoStatus === 'cards' ? 'apuestas' : 'votos'}</span>
+                          <span>
+                            {casinoStatus === 'intro' ? 'Intro Cinema' : `${(casinoStatus === 'cards' ? casinoBetsCount : casinoVotesCount)} / ${teams.length} listos`}
+                          </span>
                         </div>
                         <div className="h-2 bg-slate-800 rounded-full overflow-hidden border border-white/5">
-                          <motion.div animate={{ width: `${(casinoTimer / 30) * 100}%` }} className="h-full bg-yellow-500" />
+                          <motion.div animate={{ width: `${(casinoTimer / (casinoStatus === 'intro' ? 15 : 30)) * 100}%` }} className="h-full bg-yellow-500" />
                         </div>
                       </div>
                     )}
@@ -578,10 +584,18 @@ function GameDashboard({ session, teams, events, answeredTeamIds, betsCount, onA
                   <div className="flex flex-col gap-2">
                     <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={async () => {
-                          await onDealCards();
-                          level3ChannelRef.current?.send({ type: 'broadcast', event: 'cartas', payload: {} });
+                        onClick={() => {
+                          const start = Date.now();
+                          setCasinoStatus('intro');
+                          setCasinoTimer(15);
+                          level3ChannelRef.current?.send({ type: 'broadcast', event: 'nivel3_intro', payload: { started_at: start } });
                         }}
+                        className="cup-btn py-2 text-sm" style={{ background: '#3b82f6' }}
+                      >
+                        🎬 Re-lanzar Intro
+                      </button>
+                      <button
+                        onClick={() => onDealCards()}
                         className="cup-btn cup-btn-gold py-2 text-sm"
                       >
                         Repartir Cartas
@@ -738,21 +752,34 @@ function HostSession({ sessionId }: { sessionId: string }) {
   const [casinoAutomated, setCasinoAutomated] = useState(true);
   const [casinoRound, setCasinoRound] = useState(0);
   // 'cards' = bet phase (no question yet), 'answering' = question visible
-  const [casinoStatus, setCasinoStatus] = useState<'idle' | 'seeding' | 'cards' | 'answering' | 'spinning' | 'revealed'>('idle');
+  const [casinoStatus, setCasinoStatus] = useState<'idle' | 'intro' | 'seeding' | 'cards' | 'answering' | 'spinning' | 'revealed'>('idle');
   const [casinoTimer, setCasinoTimer] = useState(0);
+  // Timestamp (ms) when the current phase started — sent in broadcasts so teams sync to the same clock
+  const phaseStartedAtRef = useRef<number>(0);
+  // Stable refs for closures in event handlers (avoid stale captures)
+  const casinoStatusRef = useRef<string>('idle');
+  const teamsLengthRef = useRef<number>(0);
   const level3ChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   // Prevent duplicate question generation when effect re-runs
   const questionSentRef = useRef(false);
   // Votos de respuesta acumulados: { [teamId]: { option, bet, card } }
   const casinoVotesRef = useRef<Record<string, { option: string; bet: number; card: string | null }>>({});
+  // Conteo de votos recibidos (state para re-render en host UI)
+  const [casinoVotesCount, setCasinoVotesCount] = useState(0);
   // Apuestas/cartas fijadas en fase cards: { [teamId]: { bet, card } }
   const casinoCardBetsRef = useRef<Record<string, { bet: number; card: string | null }>>({});
   // Pregunta actual (necesaria para el settle)
   const casinoQuestionRef = useRef<{ respuesta_correcta: string; pista_criptica?: string } | null>(null);
   // Cartas asignadas por equipo (se guardan al inicio para reenviar en cada ronda)
   const casinoTeamCardsRef = useRef<Record<string, string[]>>({});
+  // Ref del array de equipos para evitar closures obsoletas en setTimeout callbacks
+  const teamsRef = useRef<typeof teams>([]);
   // Conteo de apuestas confirmadas (bet_confirmed broadcasts)
   const [casinoBetsCount, setCasinoBetsCount] = useState(0);
+
+  // Sync refs with state/props so event-handler closures always see fresh values
+  useEffect(() => { casinoStatusRef.current = casinoStatus; }, [casinoStatus]);
+  useEffect(() => { teamsLengthRef.current = teams.length; teamsRef.current = teams; }, [teams]);
 
   // Maintain Level 3 Channel (global broadcast)
   useEffect(() => {
@@ -774,13 +801,24 @@ function HostSession({ sessionId }: { sessionId: string }) {
         const { team_id, bet, card } = payload.payload ?? {};
         if (team_id) {
           casinoCardBetsRef.current[team_id] = { bet: Number(bet) || 50, card: card ?? null };
-          setCasinoBetsCount((n) => n + 1);
+          const newCount = Object.keys(casinoCardBetsRef.current).length;
+          setCasinoBetsCount(newCount);
+          // Avanzar inmediatamente si todos los equipos confirmaron su apuesta
+          if (casinoStatusRef.current === 'cards' && newCount >= teamsLengthRef.current && teamsLengthRef.current > 0) {
+            setCasinoTimer(0);
+          }
         }
       })
       .on('broadcast', { event: 'team_voted' }, (payload) => {
         const { team_id, option, bet, card } = payload.payload ?? {};
         if (team_id) {
           casinoVotesRef.current[team_id] = { option, bet: Number(bet) || 50, card: card ?? null };
+          const voteCount = Object.keys(casinoVotesRef.current).length;
+          setCasinoVotesCount(voteCount);
+          // Avanzar inmediatamente si todos los equipos ya votaron
+          if (casinoStatusRef.current === 'answering' && voteCount >= teamsLengthRef.current && teamsLengthRef.current > 0) {
+            setCasinoTimer(0);
+          }
         }
       })
       .subscribe();
@@ -789,10 +827,11 @@ function HostSession({ sessionId }: { sessionId: string }) {
   }, [session?.status]);
 
   // Helper: enviar cartas almacenadas a todos los equipos (re-usable cada ronda)
-  const sendCardsToTeams = (teamCards: Record<string, string[]>) => {
+  // startedAt se incluye en el payload para que los equipos sincronicen su timer
+  const sendCardsToTeams = (teamCards: Record<string, string[]>, startedAt: number) => {
     for (const [tid, cards] of Object.entries(teamCards)) {
       supabase.channel(`private-team-${tid}`)
-        .send({ type: 'broadcast', event: 'cartas', payload: { cards } });
+        .send({ type: 'broadcast', event: 'cartas', payload: { cards, started_at: startedAt } });
     }
   };
 
@@ -802,16 +841,26 @@ function HostSession({ sessionId }: { sessionId: string }) {
     'TRANSFERENCIA',
     'CARTA OSCURA',
     'FAROL',
+    'SEGURO CRUZADO',
   ];
 
-  // Helper: repartir todas las cartas a todos los equipos
-  const dealCards = async () => {
+  function shuffleSample(arr: string[], k: number): string[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a.slice(0, k);
+  }
+
+  // Helper: repartir 2 cartas aleatorias distintas a cada equipo
+  const dealCards = async (startedAt: number = Date.now()) => {
     const teamCards: Record<string, string[]> = {};
     for (const t of teams) {
-      teamCards[t.id] = ALL_CARDS;
+      teamCards[t.id] = shuffleSample(ALL_CARDS, 2);
     }
     casinoTeamCardsRef.current = teamCards;
-    sendCardsToTeams(teamCards);
+    sendCardsToTeams(teamCards, startedAt);
   };
 
   // Helper: generar y enviar pregunta del Croupier
@@ -835,9 +884,11 @@ function HostSession({ sessionId }: { sessionId: string }) {
         }
         // Pequeño delay para que la pista llegue antes que la pregunta
         await new Promise((r) => setTimeout(r, 300));
+        const answerStartedAt = Date.now();
+        phaseStartedAtRef.current = answerStartedAt;
         level3ChannelRef.current?.send({
           type: 'broadcast', event: 'nivel3_ronda',
-          payload: { question: res.question },
+          payload: { question: res.question, started_at: answerStartedAt },
         });
       }
     } catch { /* fallback silencioso */ }
@@ -847,13 +898,35 @@ function HostSession({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!session || session.status !== 'level3' || !casinoAutomated) return;
 
-    // Repartir cartas al inicio
+    // 1. Iniciamos Nivel 3 -> Mostrar Intro (solo una vez)
     if (casinoRound === 0 && casinoStatus === 'idle') {
+      if (!level3ChannelRef.current) return;
+      
+      setCasinoStatus('intro');
+      setCasinoTimer(15);
+      
+      // Delay de seguridad para que los clientes se conecten
+      setTimeout(() => {
+        const start = Date.now();
+        level3ChannelRef.current?.send({ 
+          type: 'broadcast', 
+          event: 'nivel3_intro', 
+          payload: { started_at: start } 
+        });
+      }, 1000);
+      return;
+    }
+
+    // 2. Intro terminada -> Preparar primer set de cartas
+    if (casinoStatus === 'intro' && casinoTimer === 0 && casinoRound === 0) {
       setCasinoStatus('seeding');
       setCasinoBetsCount(0);
       casinoCardBetsRef.current = {};
+      
       setTimeout(async () => {
-        await dealCards();
+        const startedAt = Date.now();
+        phaseStartedAtRef.current = startedAt;
+        await dealCards(startedAt); // Envía 'cartas' broadcast
         setCasinoRound(1);
         setCasinoStatus('cards');
         setCasinoTimer(30);
@@ -864,6 +937,8 @@ function HostSession({ sessionId }: { sessionId: string }) {
     // Timer de apuestas (cards) expirado → pasar a answering
     if (casinoStatus === 'cards' && casinoTimer === 0) {
       questionSentRef.current = false;
+      setCasinoVotesCount(0);
+      casinoVotesRef.current = {};
       setCasinoStatus('answering');
       setCasinoTimer(30);
       return;
@@ -884,47 +959,83 @@ function HostSession({ sessionId }: { sessionId: string }) {
       level3ChannelRef.current?.send({ type: 'broadcast', event: 'spin_wheel', payload: {} });
 
       setTimeout(() => {
-        // Liquidar tokens
+        // Liquidar tokens y construir vitrina de resultados
         const q = casinoQuestionRef.current;
         const votes = casinoVotesRef.current;
-        if (q && Object.keys(votes).length > 0) {
-          const teamBets = Object.entries(votes).map(([team_id, v]) => ({
-            team_id, option: v.option, bet: v.bet, card: v.card,
-          }));
-          fetch('/api/nivel3/settle', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ correct_option: q.respuesta_correcta, team_bets: teamBets }),
-          })
-            .then((r) => r.json())
-            .then((res) => {
+        const currentTeams = teamsRef.current;
+        const SHOWCASE_PER_TEAM_MS = 3000;
+        const SCOREBOARD_MS = 5000;
+
+        const doSettle = async () => {
+          let settledResults: { team_id: string; earned: number }[] = [];
+
+          if (q && Object.keys(votes).length > 0) {
+            const teamBets = Object.entries(votes).map(([team_id, v]) => ({
+              team_id, option: v.option, bet: v.bet, card: v.card,
+            }));
+            try {
+              const res = await fetch('/api/nivel3/settle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ correct_option: q.respuesta_correcta, team_bets: teamBets }),
+              }).then((r) => r.json());
               if (res.ok) {
+                settledResults = res.results ?? [];
                 level3ChannelRef.current?.send({
                   type: 'broadcast', event: 'settle_results',
-                  payload: { results: res.results, correct: q.respuesta_correcta },
+                  payload: { results: settledResults, correct: q.respuesta_correcta },
                 });
               }
-            })
-            .catch(() => {});
-        }
+            } catch { /* silencioso */ }
+          }
+
+          // Construir resultados enriquecidos para la vitrina (incluye nombre, carta, etc.)
+          const enriched = currentTeams.map((t) => {
+            const vote = votes[t.id] ?? { option: null, bet: 0, card: null };
+            const settled = settledResults.find((r) => r.team_id === t.id);
+            return {
+              team_id: t.id,
+              team_name: t.name,
+              option: vote.option ?? null,
+              correct: q ? vote.option === q.respuesta_correcta : false,
+              bet: vote.bet,
+              card: vote.card,
+              earned: settled?.earned ?? 0,
+            };
+          });
+
+          // Broadcast vitrina sincronizada — equipos derivan el índice del equipo
+          // mostrado a partir del started_at (igual que L1/L2 derivan la fase)
+          const showcaseStartedAt = Date.now() + 2000; // 2 s de margen para que llegue el evento 'revealed'
+          level3ChannelRef.current?.send({
+            type: 'broadcast', event: 'team_showcase',
+            payload: { results: enriched, started_at: showcaseStartedAt, per_team_ms: SHOWCASE_PER_TEAM_MS },
+          });
+
+          // Esperar todo el showcase + scoreboard antes de iniciar la próxima ronda
+          const showcaseDuration = currentTeams.length * SHOWCASE_PER_TEAM_MS + SCOREBOARD_MS;
+          setTimeout(() => {
+            if (casinoRound < 4) {
+              questionSentRef.current = false;
+              setCasinoBetsCount(0);
+              setCasinoVotesCount(0);
+              casinoCardBetsRef.current = {};
+              casinoVotesRef.current = {};
+              const nextStartedAt = Date.now();
+              phaseStartedAtRef.current = nextStartedAt;
+              setCasinoRound((r) => r + 1);
+              setCasinoStatus('cards');
+              setCasinoTimer(30);
+              dealCards(nextStartedAt);
+            } else {
+              setCasinoStatus('idle');
+            }
+          }, 2000 + showcaseDuration);
+        };
 
         level3ChannelRef.current?.send({ type: 'broadcast', event: 'revealed', payload: {} });
         setCasinoStatus('revealed');
-
-        setTimeout(() => {
-          if (casinoRound < 4) {
-            questionSentRef.current = false;
-            setCasinoBetsCount(0);
-            casinoCardBetsRef.current = {};
-            setCasinoRound((r) => r + 1);
-            setCasinoStatus('cards');
-            setCasinoTimer(30);
-            // Re-enviar cartas a todos los equipos para que entren en fase cards
-            sendCardsToTeams(casinoTeamCardsRef.current);
-          } else {
-            setCasinoStatus('idle');
-          }
-        }, 10000);
+        doSettle();
       }, 8000);
     }
   // casinoTimer en deps para detectar cuando llega a 0
@@ -1009,6 +1120,27 @@ function HostSession({ sessionId }: { sessionId: string }) {
         .eq('round_number', 1)
     }
 
+    if (target === 'level3') {
+      // Si el status ya era level3 (salto DEV dentro del mismo nivel), Supabase Realtime
+      // no dispara porque el valor no cambia y LaTraicion no se desmonta.
+      // Reseteamos el estado del croupier y avisamos a los equipos para que vuelvan a la intro.
+      setCasinoRound(0)
+      setCasinoStatus('idle')
+      setCasinoTimer(0)
+      setCasinoBetsCount(0)
+      setCasinoVotesCount(0)
+      casinoVotesRef.current = {}
+      casinoCardBetsRef.current = {}
+      questionSentRef.current = false
+      setTimeout(() => {
+        level3ChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'nivel3_reset',
+          payload: {},
+        })
+      }, 400)
+    }
+
     setAdvancing(false)
   }
 
@@ -1030,7 +1162,10 @@ function HostSession({ sessionId }: { sessionId: string }) {
       casinoStatus={casinoStatus}
       casinoTimer={casinoTimer}
       casinoBetsCount={casinoBetsCount}
+      casinoVotesCount={casinoVotesCount}
       setCasinoAutomated={setCasinoAutomated}
+      setCasinoStatus={setCasinoStatus}
+      setCasinoTimer={setCasinoTimer}
       level3ChannelRef={level3ChannelRef}
       onDealCards={dealCards}
       onSendQuestion={sendQuestion} />

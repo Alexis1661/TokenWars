@@ -30,8 +30,10 @@ export function PlayingCard({
   height = 172,
 }: PlayingCardProps) {
   return (
-    <div
+    <motion.div
       onClick={() => !disabled && revealed && onClick()}
+      whileHover={revealed && !disabled ? { y: -10, scale: 1.05 } : {}}
+      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       style={{
         width,
         height,
@@ -181,8 +183,23 @@ export function PlayingCard({
             {description}
           </span>
 
+          {/* Brillo holográfico — activo cuando está seleccionada */}
+          {selected && (
+            <motion.div
+              initial={{ x: '-110%' }}
+              animate={{ x: '110%' }}
+              transition={{ duration: 1.4, repeat: Infinity, repeatDelay: 0.8, ease: 'easeInOut' }}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(105deg, transparent 25%, rgba(255,255,255,0.22) 50%, rgba(255,215,0,0.18) 60%, transparent 75%)',
+                borderRadius: 12,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
         </div>
       </motion.div>
-    </div>
+    </motion.div>
   )
 }
